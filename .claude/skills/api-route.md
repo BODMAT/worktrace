@@ -69,14 +69,16 @@ export async function POST(req: NextRequest) {
 
 ## CORS for the Chrome Extension
 
-Endpoints called from `chrome-extension://*` need CORS headers. Use the shared helper (added in AC 3):
+Endpoints called from `chrome-extension://*` need CORS headers. Use the shared helpers in `@/server/cors`:
 
 ```ts
-import { withCors } from "@/server/cors";
+import { withCors, corsPreflight } from "@/server/cors";
 
 export const POST = withCors(async (req) => { /* ... */ });
-export const OPTIONS = withCors(async () => new NextResponse(null, { status: 204 }));
+export function OPTIONS(req: NextRequest) { return corsPreflight(req); }
 ```
+
+`withCors` echoes the request's `Origin` back in `Access-Control-Allow-Origin` if it matches the Chrome extension format (`^chrome-extension://[a-p]{32}$`); otherwise it sends `null` (browsers block reading the response; Postman/curl ignore CORS and still see the body).
 
 Always pair non-GET handlers with an `OPTIONS` handler for the CORS preflight.
 
