@@ -19,9 +19,9 @@ extension/dist/
 extension/build/
 *.zip
 
-# Prisma generated client
+# Prisma generated artifacts (client + zod schemas)
 **/app/generated/
-**/generated/prisma/
+**/generated/
 
 # Environment
 .env
