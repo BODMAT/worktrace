@@ -12,10 +12,6 @@ and generating AI session reports.
 ## Type safety
 - TypeScript strict. **`any` is forbidden** — use `unknown` + type guards, or define proper types.
 
-## Validation
-- Zod for all external input (Route Handlers, extension messages, env vars).
-- Validate at the boundary, not deep inside business logic.
-
 ## Dashboard structure
 - **Business logic lives in `dashboard/server/`** (server-only modules).
 - Route Handlers in `dashboard/app/api/**/route.ts` are thin: parse → validate (Zod) → call `server/` → respond.
@@ -36,10 +32,20 @@ Do NOT duplicate auth checks in components, server modules, or other Route Handl
 
 ## Database (Prisma 7)
 - Schema: `dashboard/prisma/schema.prisma`.
-- Generated client output: `dashboard/app/generated/prisma` (gitignored).
-- Imports: `import { PrismaClient } from "@/generated/prisma"` — **not** `@prisma/client`.
-- Singleton `PrismaClient` per process — see `dashboard/server/db.ts` (added when first needed).
+- Two generators run on `prisma generate`:
+  - `dashboard/generated/prisma/` — Prisma client (entry: `client.ts`)
+  - `dashboard/generated/zod/` — Zod schemas (`prisma-zod-generator`)
+- Both folders gitignored.
+- Imports:
+  - `import { PrismaClient } from "@/generated/prisma/client"` — **not** `@prisma/client` (Prisma 7 uses `client.ts` entry).
+  - Base Zod schemas: `import { EventUncheckedCreateInputObjectZodSchema } from "@/generated/zod/schemas/objects/EventUncheckedCreateInput.schema"`.
+- Singleton `PrismaClient` per process — see `dashboard/server/db.ts`. Uses `@prisma/adapter-pg` (Prisma 7 requires a driver adapter at runtime).
 - Migrations are committed to git.
+
+## Validation
+- Zod for all external input (Route Handlers, extension messages, env vars).
+- API-facing schemas live in `dashboard/server/schemas/<domain>.ts` — derived from the generated `@/generated/zod` base schemas via `.omit()` / `.extend()` / `.pick()`. **Never hand-write a schema that duplicates Prisma model fields.**
+- Validate at the boundary, not deep inside business logic.
 
 ## Skills
 Task-specific recipes live in `.claude/skills/`:
