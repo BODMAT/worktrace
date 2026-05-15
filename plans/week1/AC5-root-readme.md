@@ -1,7 +1,7 @@
 # Plan: AC 5 — Root `README.md`
 
 **Branch:** `chore/repo-setup` (first commit; a second commit on the same branch will add GitHub branch-protection notes + minimal CI)
-**Closes:** Week 1 AC 5 ([docs/Task.md L59](../docs/Task.md#L59))
+**Closes:** Week 1 AC 5 ([docs/Task.md L59](../../docs/Task.md#L59))
 **Status:** plan, awaiting approval
 
 ## Scope

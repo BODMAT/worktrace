@@ -1,7 +1,7 @@
 # Plan: AC 4 — Chrome Extension initialization
 
 **Branch:** `feature/extension-init`
-**Closes:** Week 1 AC 4 ([docs/Task.md L58](../docs/Task.md#L58))
+**Closes:** Week 1 AC 4 ([docs/Task.md L58](../../docs/Task.md#L58))
 **Status:** plan, awaiting approval
 
 ## Scope
