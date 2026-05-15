@@ -21,6 +21,12 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
       - run: npx prisma generate
+        env:
+          # prisma.config.ts uses prisma/config's strict env() helper, which
+          # throws if DATABASE_URL is unset. `prisma generate` does not connect
+          # to the database — it only reads the schema and writes the client —
+          # so a dummy URL satisfies the config loader.
+          DATABASE_URL: "postgresql://prisma:prisma@localhost:5432/prisma"
       - run: npm run lint
       - run: npx tsc --noEmit
 
