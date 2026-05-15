@@ -1,0 +1,14 @@
+# Normalize line endings — LF in repo, LF in working tree on all platforms.
+* text=auto eol=lf
+
+# Binary file types — never touch line endings.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.zip   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
