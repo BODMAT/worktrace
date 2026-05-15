@@ -1,7 +1,7 @@
 # Plan: AC 3 — CORS for Chrome Extension
 
 **Branch:** `feature/api-events-and-cors` (second commit, same branch as AC 7)
-**Closes:** Week 1 AC 3 ([docs/Task.md L55](../docs/Task.md#L55))
+**Closes:** Week 1 AC 3 ([docs/Task.md L55](../../docs/Task.md#L55))
 **Status:** plan, awaiting approval
 
 ## Scope

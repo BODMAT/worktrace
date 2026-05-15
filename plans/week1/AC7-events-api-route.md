@@ -1,7 +1,7 @@
 # Plan: AC 7 — POST /api/v1/events Route Handler
 
 **Branch:** `feature/api-events-and-cors` (combined PR with AC 3)
-**Closes:** Week 1 AC 7 ([docs/Task.md L63](../docs/Task.md#L63))
+**Closes:** Week 1 AC 7 ([docs/Task.md L63](../../docs/Task.md#L63))
 **Status:** implemented, awaiting smoke test
 
 This plan is written post-hoc after several mid-stream corrections from the user. It documents the final decisions and the changes that landed, including all the adjustments made during implementation.

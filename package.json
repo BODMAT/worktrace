@@ -1,0 +1,13 @@
+{
+  "name": "worktrace",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WorkTrace monorepo — Chrome extension + Next.js dashboard for AI-generated dev session reports.",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9",
+    "lint-staged": "^15"
+  }
+}
