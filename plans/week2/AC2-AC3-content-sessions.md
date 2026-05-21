@@ -2,7 +2,7 @@
 
 **Branch:** `feature/extension-content-sessions`
 **Closes:** Week 2 AC 2, AC 3 ([docs/Task.md L75–L77](../../docs/Task.md#L75))
-**Status:** plan, awaiting review
+**Status:** implemented — gaps identified, see section below
 
 ---
 
@@ -138,3 +138,60 @@ Popup (AC 4) використовуватиме `SESSION_GET_STATE` для ві�
 - Пауза сесії — AC 4 (потрібна кнопка в popup)
 - Відправка зібраних подій на API — AC 5
 - Відображення таймера і статусу — AC 4
+
+---
+
+## ⚠️ Gaps identified after implementation (впливають на AC 4 і AC 5)
+
+### Gap 1 — PAUSE/RESUME відсутні в session.ts → блокер для AC 4
+
+AC 4 вимагає "кнопку паузи збору". Логіка паузи — в `background/session.ts`, а не в попапі. `totalActiveMs` вже готовий для цього, але `SESSION_PAUSE` / `SESSION_RESUME` повідомлень і методів у `session.ts` немає.
+
+**Рішення для AC 4:** у тому самому `session.ts` додати:
+```ts
+export async function pauseSession(): Promise<Session | null>
+export async function resumeSession(): Promise<Session | null>
+```
+При паузі: `totalActiveMs += Date.now() - startedAt`, `startedAt = null`.
+При відновленні: `startedAt = Date.now()`.
+Потрібно розширити тип `Session` полем `pausedAt: number | null`.
+
+---
+
+### Gap 2 — Немає `POST /api/v1/sessions` → блокер для AC 5
+
+Task.md не описує цей endpoint, але він необхідний: `Event.sessionId` — FK до `Session` у БД. Локальний `session.id = crypto.randomUUID()` ≠ CUID з БД.
+
+**Рішення для AC 5:**
+- Додати `POST /api/v1/sessions` (створює Session в БД, повертає `{ id }`)
+- Додати `PATCH /api/v1/sessions/:id` (закриває сесію — записує `endedAt`)
+- При `SESSION_START` у service worker → одразу викликати `apiFetch("/api/v1/sessions", { method: "POST" })` і зберегти DB-шний `sessionId` поруч з локальною сесією
+
+Розширення локального типу:
+```ts
+interface Session {
+  id:            string; // локальний UUID
+  dbSessionId:   string | null; // CUID з БД, null до першого sync
+  ...
+}
+```
+
+---
+
+### Gap 3 — Нотатки з AC 4 popup нікуди не потраплять
+
+AC 4: "поле для швидких нотаток і тегів". Модель `Session` не має поля `notes`. Модель `Event` має `content: String?` і `tags: String[]`.
+
+**Рішення:** нотатку зберігати як окремий `Event` з `tags: ["note"]` і `content: <текст нотатки>`. Не потрібна міграція схеми.
+
+---
+
+### Gap 4 — Формат `Event.content` не визначено
+
+`Event.content: String?` є в схемі, але Task.md не описує що туди класти. По логіці з `PageMetadata`:
+
+```
+content = [metaDescription, ...headings].filter(Boolean).join(" | ")
+```
+
+Фіксуємо цей формат тут, щоб AC 5 і Week 3 dashboard читали однаково.
