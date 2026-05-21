@@ -1,5 +1,155 @@
-console.log("[worktrace] service worker booted");
+import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
+
+const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+const EXPIRY_BUFFER_MS = 60_000;
+
+// ─── Storage ───────────────────────────────────────────────────────────────────
+
+async function getStoredAuth(): Promise<StoredAuth | null> {
+  const r = await chrome.storage.local.get(["jwt", "jwtExpiresAt"]);
+  if (!r["jwt"] || !r["jwtExpiresAt"]) return null;
+  return { jwt: r["jwt"] as string, jwtExpiresAt: r["jwtExpiresAt"] as number };
+}
+
+async function storeAuth(jwt: string, expiresAt: number): Promise<void> {
+  await chrome.storage.local.set({ jwt, jwtExpiresAt: expiresAt });
+}
+
+async function clearAuth(): Promise<void> {
+  await chrome.storage.local.remove(["jwt", "jwtExpiresAt"]);
+}
+
+function isExpired(expiresAt: number): boolean {
+  return Date.now() >= expiresAt - EXPIRY_BUFFER_MS;
+}
+
+// ─── Google OAuth ──────────────────────────────────────────────────────────────
+
+async function launchGoogleOAuth(): Promise<string> {
+  const redirectUrl = chrome.identity.getRedirectURL("auth");
+  const nonce = crypto.randomUUID();
+
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+  url.searchParams.set("response_type", "id_token");
+  url.searchParams.set("redirect_uri", redirectUrl);
+  url.searchParams.set("scope", "openid email profile");
+  url.searchParams.set("nonce", nonce);
+  url.searchParams.set("prompt", "select_account");
+
+  const responseUrl = await chrome.identity.launchWebAuthFlow({
+    url: url.toString(),
+    interactive: true,
+  });
+
+  if (!responseUrl) throw new Error("OAuth flow cancelled");
+
+  const fragment = new URL(responseUrl).hash.slice(1);
+  const idToken = new URLSearchParams(fragment).get("id_token");
+  if (!idToken) throw new Error("No id_token in OAuth response");
+  return idToken;
+}
+
+// ─── JWT exchange ──────────────────────────────────────────────────────────────
+
+async function exchangeForJWT(googleIdToken: string): Promise<StoredAuth> {
+  const res = await fetch(`${DASHBOARD_URL}/api/auth/extension`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ googleToken: googleIdToken }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(`JWT exchange failed (${res.status}): ${JSON.stringify(body)}`);
+  }
+
+  const { token } = await res.json() as { token: string };
+  const payloadB64 = token.split(".")[1] ?? "";
+  const { exp } = JSON.parse(atob(payloadB64)) as { exp: number };
+  return { jwt: token, jwtExpiresAt: exp * 1000 };
+}
+
+// ─── Core ──────────────────────────────────────────────────────────────────────
+
+async function ensureAuthenticated(): Promise<string> {
+  const stored = await getStoredAuth();
+  if (stored && !isExpired(stored.jwtExpiresAt)) return stored.jwt;
+
+  const googleIdToken = await launchGoogleOAuth();
+  const auth = await exchangeForJWT(googleIdToken);
+  await storeAuth(auth.jwt, auth.jwtExpiresAt);
+  return auth.jwt;
+}
+
+// Використовується в AC 5 для всіх API-запитів
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const token = await ensureAuthenticated();
+  return fetch(`${DASHBOARD_URL}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers as Record<string, string> | undefined),
+      Authorization: `Bearer ${token}`,
+    },
+  });
+}
+
+// ─── Message listener ──────────────────────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener(
+  (message: AuthMessage, _sender, sendResponse: (r: AuthResponse) => void) => {
+    if (message.type === "AUTH_LOGIN") {
+      ensureAuthenticated()
+        .then((jwt) => sendResponse({ success: true, jwt }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "AUTH_LOGOUT") {
+      clearAuth()
+        .then(() => sendResponse({ success: true }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "AUTH_GET_STATUS") {
+      getStoredAuth()
+        .then((stored) =>
+          sendResponse({
+            success: true,
+            isAuthenticated: stored !== null && !isExpired(stored.jwtExpiresAt),
+          }),
+        )
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    return false;
+  },
+);
+
+// ─── Lifecycle ─────────────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log("[worktrace] installed", details.reason);
+  console.log("[worktrace] service worker installed:", details.reason);
 });
