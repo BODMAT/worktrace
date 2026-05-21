@@ -1,31 +1,191 @@
 import type { AuthMessage, AuthResponse } from "../types/auth";
+import type { SessionMessage, SessionResponse, SessionState } from "../types/session";
 
-function sendMessage(message: AuthMessage): Promise<AuthResponse> {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, resolve);
-  });
+// ─── Messaging helpers ─────────────────────────────────────────────────────────
+
+function sendAuth(msg: AuthMessage): Promise<AuthResponse> {
+  return new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(msg, (res: AuthResponse | undefined) => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      if (!res) return reject(new Error("No response from background"));
+      resolve(res);
+    }),
+  );
 }
 
-const statusEl = document.getElementById("auth-status") as HTMLParagraphElement;
-const btnLogin = document.getElementById("btn-login") as HTMLButtonElement;
-const btnLogout = document.getElementById("btn-logout") as HTMLButtonElement;
+function sendSession(msg: SessionMessage): Promise<SessionResponse> {
+  return new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(msg, (res: SessionResponse | undefined) => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      if (!res) return reject(new Error("No response from background"));
+      resolve(res);
+    }),
+  );
+}
 
-// Check auth status when popup opens
-sendMessage({ type: "AUTH_GET_STATUS" }).then((res) => {
-  if (res.success && "isAuthenticated" in res) {
-    statusEl.textContent = res.isAuthenticated ? "✅ Signed in" : "❌ Not signed in";
+// ─── DOM refs ──────────────────────────────────────────────────────────────────
+
+const statusDot   = document.getElementById("status-dot")    as HTMLSpanElement;
+const statusLabel = document.getElementById("status-label")   as HTMLSpanElement;
+const authSection = document.getElementById("auth-section")   as HTMLElement;
+const timerSection= document.getElementById("timer-section")  as HTMLElement;
+const timerEl     = document.getElementById("timer")          as HTMLDivElement;
+const btnLogin    = document.getElementById("btn-login")      as HTMLButtonElement;
+const btnStart    = document.getElementById("btn-start")      as HTMLButtonElement;
+const btnPause    = document.getElementById("btn-pause")      as HTMLButtonElement;
+const btnStop     = document.getElementById("btn-stop")       as HTMLButtonElement;
+const syncEl      = document.getElementById("sync-indicator") as HTMLDivElement;
+const syncLabel   = document.getElementById("sync-label")     as HTMLSpanElement;
+const noteInput   = document.getElementById("note-input")     as HTMLInputElement;
+const tagsInput   = document.getElementById("tags-input")     as HTMLInputElement;
+const btnNote     = document.getElementById("btn-note")       as HTMLButtonElement;
+
+// ─── Timer formatting ──────────────────────────────────────────────────────────
+
+function formatMs(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
+}
+
+// ─── UI state ──────────────────────────────────────────────────────────────────
+
+type UIState = "idle" | "active" | "paused";
+
+function applyState(state: UIState, elapsedMs = 0): void {
+  timerEl.textContent = state === "idle" ? "00:00:00" : formatMs(elapsedMs);
+
+  timerEl.className     = `popup__time popup__time--${state}`;
+  statusDot.className   = `popup__status-dot${state !== "idle" ? ` popup__status-dot--${state}` : ""}`;
+  statusLabel.className = `popup__status-label${state !== "idle" ? ` popup__status-label--${state}` : ""}`;
+  statusLabel.textContent = state.toUpperCase();
+
+  btnStart.disabled = state !== "idle";
+  btnPause.disabled = state === "idle";
+  btnStop.disabled  = state === "idle";
+  btnPause.textContent = state === "paused" ? "▶ RESUME" : "⏸ PAUSE";
+  btnNote.disabled  = state !== "active";
+}
+
+async function refreshSyncIndicator(): Promise<void> {
+  const r = await chrome.storage.local.get("pendingEvents");
+  const count = ((r["pendingEvents"] as unknown[]) ?? []).length;
+  syncLabel.textContent = `${count} event${count !== 1 ? "s" : ""} queued`;
+  syncEl.classList.toggle("popup__sync--has-events", count > 0);
+}
+
+// ─── Session polling ───────────────────────────────────────────────────────────
+
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+function startPolling(): void {
+  if (pollInterval) return;
+  pollInterval = setInterval(async () => {
+    const res = await sendSession({ type: "SESSION_GET_STATE" }).catch(() => null);
+    if (!res || !res.success || !("session" in res)) return;
+    const session = res.session as SessionState | null;
+    if (!session) {
+      applyState("idle");
+    } else if (session.pausedAt !== null) {
+      applyState("paused", session.elapsedMs);
+    } else {
+      applyState("active", session.elapsedMs);
+    }
+    await refreshSyncIndicator();
+  }, 1000);
+}
+
+function stopPolling(): void {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = null;
+}
+
+// ─── Auth flow ─────────────────────────────────────────────────────────────────
+
+async function init(): Promise<void> {
+  const authRes = await sendAuth({ type: "AUTH_GET_STATUS" });
+
+  if (!authRes.success || !("isAuthenticated" in authRes) || !authRes.isAuthenticated) {
+    authSection.style.display = "flex";
+    timerSection.style.display = "none";
+    return;
   }
-});
+
+  authSection.style.display = "none";
+  timerSection.style.display = "flex";
+
+  // Load initial state
+  const res = await sendSession({ type: "SESSION_GET_STATE" });
+  if (res.success && "session" in res) {
+    const session = res.session as SessionState | null;
+    if (!session) applyState("idle");
+    else if (session.pausedAt !== null) applyState("paused", session.elapsedMs);
+    else applyState("active", session.elapsedMs);
+  }
+
+  await refreshSyncIndicator();
+  startPolling();
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────────────
 
 btnLogin.addEventListener("click", async () => {
   btnLogin.disabled = true;
-  statusEl.textContent = "Signing in...";
-  const res = await sendMessage({ type: "AUTH_LOGIN" });
-  statusEl.textContent = res.success ? "✅ Signed in" : `❌ ${!res.success ? res.error : ""}`;
-  btnLogin.disabled = false;
+  btnLogin.textContent = "Signing in...";
+  const res = await sendAuth({ type: "AUTH_LOGIN" });
+  if (res.success) {
+    await init();
+  } else {
+    btnLogin.disabled = false;
+    btnLogin.textContent = "Sign in with Google";
+  }
 });
 
-btnLogout.addEventListener("click", async () => {
-  await sendMessage({ type: "AUTH_LOGOUT" });
-  statusEl.textContent = "❌ Not signed in";
+btnStart.addEventListener("click", async () => {
+  await sendSession({ type: "SESSION_START" });
+  applyState("active", 0);
+  startPolling();
 });
+
+btnPause.addEventListener("click", async () => {
+  const isPaused = btnPause.textContent?.includes("RESUME");
+  if (isPaused) {
+    const res = await sendSession({ type: "SESSION_RESUME" });
+    if (res.success && "session" in res && res.session) {
+      applyState("active", res.session.elapsedMs);
+    }
+  } else {
+    const res = await sendSession({ type: "SESSION_PAUSE" });
+    if (res.success && "session" in res && res.session) {
+      applyState("paused", res.session.elapsedMs);
+    }
+  }
+});
+
+btnStop.addEventListener("click", async () => {
+  await sendSession({ type: "SESSION_STOP" });
+  stopPolling();
+  applyState("idle");
+  await refreshSyncIndicator();
+});
+
+btnNote.addEventListener("click", async () => {
+  const text = noteInput.value.trim();
+  if (!text) return;
+  const tags = tagsInput.value
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  await sendSession({ type: "NOTE_ADD", text, tags });
+  noteInput.value = "";
+  tagsInput.value = "";
+  await refreshSyncIndicator();
+});
+
+// ─── Boot ──────────────────────────────────────────────────────────────────────
+
+window.addEventListener("unload", stopPolling);
+void init();

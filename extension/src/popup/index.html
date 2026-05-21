@@ -7,14 +7,55 @@
     <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
-    <main>
-      <h1>WorkTrace</h1>
-      <div id="auth-section">
-        <p id="auth-status">Checking...</p>
-        <button id="btn-login">Sign in with Google</button>
-        <button id="btn-logout">Sign out</button>
+    <div class="popup">
+
+      <!-- Header -->
+      <header class="popup__header">
+        <div class="popup__logo">
+          <span class="popup__logo-icon">⬡</span>
+          <span class="popup__logo-text">WORKTRACE</span>
+        </div>
+        <div class="popup__status" id="status-badge">
+          <span class="popup__status-dot" id="status-dot"></span>
+          <span class="popup__status-label" id="status-label">IDLE</span>
+        </div>
+      </header>
+
+      <!-- Auth -->
+      <section class="popup__auth" id="auth-section">
+        <button class="btn btn--primary" id="btn-login">Sign in with Google</button>
+      </section>
+
+      <!-- Timer -->
+      <section class="popup__timer" id="timer-section">
+        <div class="popup__time" id="timer">00:00:00</div>
+        <div class="popup__controls">
+          <button class="btn btn--start" id="btn-start">▶ START</button>
+          <button class="btn btn--pause" id="btn-pause" disabled>⏸ PAUSE</button>
+          <button class="btn btn--stop"  id="btn-stop"  disabled>■ STOP</button>
+        </div>
+      </section>
+
+      <!-- Sync -->
+      <div class="popup__sync" id="sync-indicator">
+        <span class="popup__sync-icon">⚡</span>
+        <span class="popup__sync-count" id="sync-label">0 events queued</span>
       </div>
-    </main>
+
+      <!-- Notes -->
+      <section class="popup__notes">
+        <div class="popup__field">
+          <label class="popup__field-label">NOTE</label>
+          <input class="popup__field-input" id="note-input" type="text" placeholder="what are you working on..." />
+        </div>
+        <div class="popup__field">
+          <label class="popup__field-label">TAGS</label>
+          <input class="popup__field-input" id="tags-input" type="text" placeholder="react, bug, refactor..." />
+        </div>
+        <button class="btn btn--note" id="btn-note">+ LOG NOTE</button>
+      </section>
+
+    </div>
     <script type="module" src="./popup.ts"></script>
   </body>
 </html>
