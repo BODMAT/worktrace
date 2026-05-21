@@ -60,6 +60,12 @@ body {
 }
 
 /* ── popup__status ─────────────────────────────────────────────────────────── */
+.popup__header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .popup__status {
   display: flex;
   align-items: center;
@@ -273,6 +279,19 @@ body {
 
 .btn--stop:hover:not(:disabled) {
   background: color-mix(in srgb, var(--c-pink) 8%, transparent);
+}
+
+/* btn--logout */
+.btn--logout {
+  border-color: transparent;
+  color: var(--c-muted);
+  padding: 3px 6px;
+  font-size: 13px;
+}
+
+.btn--logout:hover {
+  color: var(--c-pink);
+  border-color: color-mix(in srgb, var(--c-pink) 30%, transparent);
 }
 
 /* btn--note */

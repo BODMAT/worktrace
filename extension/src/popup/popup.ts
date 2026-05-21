@@ -25,20 +25,21 @@ function sendSession(msg: SessionMessage): Promise<SessionResponse> {
 
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
 
-const statusDot   = document.getElementById("status-dot")    as HTMLSpanElement;
-const statusLabel = document.getElementById("status-label")   as HTMLSpanElement;
-const authSection = document.getElementById("auth-section")   as HTMLElement;
-const timerSection= document.getElementById("timer-section")  as HTMLElement;
-const timerEl     = document.getElementById("timer")          as HTMLDivElement;
-const btnLogin    = document.getElementById("btn-login")      as HTMLButtonElement;
-const btnStart    = document.getElementById("btn-start")      as HTMLButtonElement;
-const btnPause    = document.getElementById("btn-pause")      as HTMLButtonElement;
-const btnStop     = document.getElementById("btn-stop")       as HTMLButtonElement;
-const syncEl      = document.getElementById("sync-indicator") as HTMLDivElement;
-const syncLabel   = document.getElementById("sync-label")     as HTMLSpanElement;
-const noteInput   = document.getElementById("note-input")     as HTMLInputElement;
-const tagsInput   = document.getElementById("tags-input")     as HTMLInputElement;
-const btnNote     = document.getElementById("btn-note")       as HTMLButtonElement;
+const statusDot    = document.getElementById("status-dot")     as HTMLSpanElement;
+const statusLabel  = document.getElementById("status-label")    as HTMLSpanElement;
+const authSection  = document.getElementById("auth-section")    as HTMLElement;
+const timerSection = document.getElementById("timer-section")   as HTMLElement;
+const timerEl      = document.getElementById("timer")           as HTMLDivElement;
+const btnLogin     = document.getElementById("btn-login")       as HTMLButtonElement;
+const btnLogout    = document.getElementById("btn-logout")      as HTMLButtonElement;
+const btnStart     = document.getElementById("btn-start")       as HTMLButtonElement;
+const btnPause     = document.getElementById("btn-pause")       as HTMLButtonElement;
+const btnStop      = document.getElementById("btn-stop")        as HTMLButtonElement;
+const syncEl       = document.getElementById("sync-indicator")  as HTMLDivElement;
+const syncLabel    = document.getElementById("sync-label")      as HTMLSpanElement;
+const noteInput    = document.getElementById("note-input")      as HTMLInputElement;
+const tagsInput    = document.getElementById("tags-input")      as HTMLInputElement;
+const btnNote      = document.getElementById("btn-note")        as HTMLButtonElement;
 
 // ─── Timer formatting ──────────────────────────────────────────────────────────
 
@@ -67,6 +68,20 @@ function applyState(state: UIState, elapsedMs = 0): void {
   btnStop.disabled  = state === "idle";
   btnPause.textContent = state === "paused" ? "▶ RESUME" : "⏸ PAUSE";
   btnNote.disabled  = state !== "active";
+}
+
+function showAuthenticated(): void {
+  authSection.style.display = "none";
+  timerSection.style.display = "flex";
+  btnLogout.hidden = false;
+}
+
+function showUnauthenticated(): void {
+  authSection.style.display = "flex";
+  timerSection.style.display = "none";
+  btnLogout.hidden = true;
+  stopPolling();
+  applyState("idle");
 }
 
 async function refreshSyncIndicator(): Promise<void> {
@@ -105,20 +120,17 @@ function stopPolling(): void {
 // ─── Auth flow ─────────────────────────────────────────────────────────────────
 
 async function init(): Promise<void> {
-  const authRes = await sendAuth({ type: "AUTH_GET_STATUS" });
+  const authRes = await sendAuth({ type: "AUTH_GET_STATUS" }).catch(() => null);
 
-  if (!authRes.success || !("isAuthenticated" in authRes) || !authRes.isAuthenticated) {
-    authSection.style.display = "flex";
-    timerSection.style.display = "none";
+  if (!authRes || !authRes.success || !("isAuthenticated" in authRes) || !authRes.isAuthenticated) {
+    showUnauthenticated();
     return;
   }
 
-  authSection.style.display = "none";
-  timerSection.style.display = "flex";
+  showAuthenticated();
 
-  // Load initial state
-  const res = await sendSession({ type: "SESSION_GET_STATE" });
-  if (res.success && "session" in res) {
+  const res = await sendSession({ type: "SESSION_GET_STATE" }).catch(() => null);
+  if (res?.success && "session" in res) {
     const session = res.session as SessionState | null;
     if (!session) applyState("idle");
     else if (session.pausedAt !== null) applyState("paused", session.elapsedMs);
@@ -134,13 +146,18 @@ async function init(): Promise<void> {
 btnLogin.addEventListener("click", async () => {
   btnLogin.disabled = true;
   btnLogin.textContent = "Signing in...";
-  const res = await sendAuth({ type: "AUTH_LOGIN" });
-  if (res.success) {
+  const res = await sendAuth({ type: "AUTH_LOGIN" }).catch(() => null);
+  if (res?.success) {
     await init();
   } else {
     btnLogin.disabled = false;
     btnLogin.textContent = "Sign in with Google";
   }
+});
+
+btnLogout.addEventListener("click", async () => {
+  await sendAuth({ type: "AUTH_LOGOUT" }).catch(() => null);
+  showUnauthenticated();
 });
 
 btnStart.addEventListener("click", async () => {
@@ -182,6 +199,16 @@ btnNote.addEventListener("click", async () => {
   await sendSession({ type: "NOTE_ADD", text, tags });
   noteInput.value = "";
   tagsInput.value = "";
+
+  // Visual feedback
+  const prev = btnNote.textContent;
+  btnNote.textContent = "✓ SAVED";
+  btnNote.disabled = true;
+  setTimeout(() => {
+    btnNote.textContent = prev;
+    btnNote.disabled = false;
+  }, 1500);
+
   await refreshSyncIndicator();
 });
 
