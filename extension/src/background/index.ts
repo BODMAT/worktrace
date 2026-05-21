@@ -1,4 +1,12 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
+import type { ContentMessage } from "../types/content";
+import type { SessionMessage, SessionResponse } from "../types/session";
+import {
+  getSession,
+  startSession,
+  stopSession,
+  getElapsedMs,
+} from "./session";
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
@@ -101,8 +109,10 @@ export async function apiFetch(
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
+type IncomingMessage = AuthMessage | SessionMessage | ContentMessage;
+
 chrome.runtime.onMessage.addListener(
-  (message: AuthMessage, _sender, sendResponse: (r: AuthResponse) => void) => {
+  (message: IncomingMessage, _sender, sendResponse: (r: AuthResponse | SessionResponse) => void) => {
     if (message.type === "AUTH_LOGIN") {
       ensureAuthenticated()
         .then((jwt) => sendResponse({ success: true, jwt }))
@@ -142,6 +152,71 @@ chrome.runtime.onMessage.addListener(
           }),
         );
       return true;
+    }
+
+    // ─── Session messages ────────────────────────────────────────────────────
+
+    if (message.type === "SESSION_START") {
+      startSession()
+        .then((session) => sendResponse({ success: true, session }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "SESSION_STOP") {
+      stopSession()
+        .then((session) => sendResponse({ success: true, session }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "SESSION_GET_STATE") {
+      getSession()
+        .then((session) => {
+          if (session) {
+            // Attach live elapsed for the popup timer
+            const sessionWithElapsed = {
+              ...session,
+              elapsedMs: getElapsedMs(session),
+            };
+            sendResponse({ success: true, session: sessionWithElapsed });
+          } else {
+            sendResponse({ success: true, session: null });
+          }
+        })
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    // ─── Content script messages ─────────────────────────────────────────────
+
+    if (message.type === "PAGE_METADATA") {
+      // Store metadata only when a session is active (AC 5 will batch-send it)
+      getSession().then((session) => {
+        if (!session) return;
+        // Stored for AC 5 batch sync — no response needed
+        chrome.storage.local.get("pendingEvents").then((r) => {
+          const pending = (r["pendingEvents"] as unknown[]) ?? [];
+          pending.push({ ...message.payload, timestamp: new Date().toISOString() });
+          chrome.storage.local.set({ pendingEvents: pending });
+        });
+      });
+      return false; // no async response needed
     }
 
     return false;
