@@ -5,6 +5,8 @@ import {
   getSession,
   startSession,
   stopSession,
+  pauseSession,
+  resumeSession,
   getElapsedMs,
 } from "./session";
 
@@ -158,7 +160,12 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_START") {
       startSession()
-        .then((session) => sendResponse({ success: true, session }))
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: { ...session, elapsedMs: getElapsedMs(session) },
+          }),
+        )
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -170,7 +177,12 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_STOP") {
       stopSession()
-        .then((session) => sendResponse({ success: true, session }))
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
+          }),
+        )
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -201,6 +213,58 @@ chrome.runtime.onMessage.addListener(
           }),
         );
       return true;
+    }
+
+    if (message.type === "SESSION_PAUSE") {
+      pauseSession()
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
+          }),
+        )
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "SESSION_RESUME") {
+      resumeSession()
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
+          }),
+        )
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "NOTE_ADD") {
+      getSession().then((session) => {
+        if (!session || session.pausedAt !== null) return;
+        chrome.storage.local.get("pendingEvents").then((r) => {
+          const pending = (r["pendingEvents"] as unknown[]) ?? [];
+          pending.push({
+            url: "",
+            title: "Note",
+            content: message.text,
+            tags: ["note", ...message.tags],
+            timestamp: new Date().toISOString(),
+          });
+          chrome.storage.local.set({ pendingEvents: pending });
+        });
+      });
+      return false;
     }
 
     // ─── Content script messages ─────────────────────────────────────────────
