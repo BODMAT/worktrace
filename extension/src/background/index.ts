@@ -5,11 +5,14 @@ import {
   getSession,
   startSession,
   stopSession,
+  pauseSession,
+  resumeSession,
   getElapsedMs,
 } from "./session";
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+const DEV_MODE = import.meta.env.VITE_DEV_MODE === "true";
 const EXPIRY_BUFFER_MS = 60_000;
 
 // ─── Storage ───────────────────────────────────────────────────────────────────
@@ -114,6 +117,17 @@ type IncomingMessage = AuthMessage | SessionMessage | ContentMessage;
 chrome.runtime.onMessage.addListener(
   (message: IncomingMessage, _sender, sendResponse: (r: AuthResponse | SessionResponse) => void) => {
     if (message.type === "AUTH_LOGIN") {
+      if (DEV_MODE) {
+        storeAuth("dev.fake.jwt", Date.now() + 7 * 24 * 60 * 60 * 1000)
+          .then(() => sendResponse({ success: true, jwt: "dev.fake.jwt" }))
+          .catch((err: unknown) =>
+            sendResponse({
+              success: false,
+              error: err instanceof Error ? err.message : "Unknown error",
+            }),
+          );
+        return true;
+      }
       ensureAuthenticated()
         .then((jwt) => sendResponse({ success: true, jwt }))
         .catch((err: unknown) =>
@@ -158,7 +172,12 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_START") {
       startSession()
-        .then((session) => sendResponse({ success: true, session }))
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: { ...session, elapsedMs: getElapsedMs(session) },
+          }),
+        )
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -170,7 +189,12 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_STOP") {
       stopSession()
-        .then((session) => sendResponse({ success: true, session }))
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
+          }),
+        )
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -201,6 +225,58 @@ chrome.runtime.onMessage.addListener(
           }),
         );
       return true;
+    }
+
+    if (message.type === "SESSION_PAUSE") {
+      pauseSession()
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
+          }),
+        )
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "SESSION_RESUME") {
+      resumeSession()
+        .then((session) =>
+          sendResponse({
+            success: true,
+            session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
+          }),
+        )
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "NOTE_ADD") {
+      getSession().then((session) => {
+        if (!session || session.pausedAt !== null) return;
+        chrome.storage.local.get("pendingEvents").then((r) => {
+          const pending = (r["pendingEvents"] as unknown[]) ?? [];
+          pending.push({
+            url: "",
+            title: "Note",
+            content: message.text,
+            tags: ["note", ...message.tags],
+            timestamp: new Date().toISOString(),
+          });
+          chrome.storage.local.set({ pendingEvents: pending });
+        });
+      });
+      return false;
     }
 
     // ─── Content script messages ─────────────────────────────────────────────
