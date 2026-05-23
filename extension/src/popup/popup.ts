@@ -1,5 +1,6 @@
 import type { AuthMessage, AuthResponse } from "../types/auth";
 import type { SessionMessage, SessionResponse, SessionState } from "../types/session";
+import type { SyncMessage, SyncResponse } from "../types/sync";
 
 // ─── Messaging helpers ─────────────────────────────────────────────────────────
 
@@ -23,6 +24,16 @@ function sendSession(msg: SessionMessage): Promise<SessionResponse> {
   );
 }
 
+function sendSync(msg: SyncMessage): Promise<SyncResponse> {
+  return new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(msg, (res: SyncResponse | undefined) => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      if (!res) return reject(new Error("No response from background"));
+      resolve(res);
+    }),
+  );
+}
+
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
 
 const statusDot    = document.getElementById("status-dot")     as HTMLSpanElement;
@@ -37,6 +48,7 @@ const btnPause     = document.getElementById("btn-pause")       as HTMLButtonEle
 const btnStop      = document.getElementById("btn-stop")        as HTMLButtonElement;
 const syncEl       = document.getElementById("sync-indicator")  as HTMLDivElement;
 const syncLabel    = document.getElementById("sync-label")      as HTMLSpanElement;
+const syncMeta     = document.getElementById("sync-meta")       as HTMLDivElement;
 const noteInput    = document.getElementById("note-input")      as HTMLInputElement;
 const tagsInput    = document.getElementById("tags-input")      as HTMLInputElement;
 const btnNote      = document.getElementById("btn-note")        as HTMLButtonElement;
@@ -84,11 +96,31 @@ function showUnauthenticated(): void {
   applyState("idle");
 }
 
+function formatAgo(ts: number): string {
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 5)   return "just now";
+  if (sec < 60)  return `${String(sec)}s ago`;
+  if (sec < 3600) return `${String(Math.floor(sec / 60))}m ago`;
+  return `${String(Math.floor(sec / 3600))}h ago`;
+}
+
 async function refreshSyncIndicator(): Promise<void> {
-  const r = await chrome.storage.local.get("pendingEvents");
-  const count = ((r["pendingEvents"] as unknown[]) ?? []).length;
-  syncLabel.textContent = `${count} event${count !== 1 ? "s" : ""} queued`;
-  syncEl.classList.toggle("popup__sync--has-events", count > 0);
+  const res = await sendSync({ type: "SYNC_GET_STATUS" }).catch(() => null);
+  if (!res || !res.success) return;
+
+  syncLabel.textContent = `${String(res.queueSize)} event${res.queueSize !== 1 ? "s" : ""} queued`;
+  syncEl.classList.toggle("popup__sync--has-events", res.queueSize > 0);
+
+  if (res.lastError) {
+    syncMeta.textContent = `error: ${res.lastError}`;
+    syncMeta.classList.add("popup__sync-meta--error");
+  } else if (res.lastSyncedAt) {
+    syncMeta.textContent = `synced ${formatAgo(res.lastSyncedAt)}`;
+    syncMeta.classList.remove("popup__sync-meta--error");
+  } else {
+    syncMeta.textContent = "not synced yet";
+    syncMeta.classList.remove("popup__sync-meta--error");
+  }
 }
 
 // ─── Session polling ───────────────────────────────────────────────────────────

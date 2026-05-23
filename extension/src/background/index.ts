@@ -2,6 +2,7 @@ import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { ContentMessage } from "../types/content";
 import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
+import type { SyncMessage, SyncResponse } from "../types/sync";
 import {
   getSession,
   startSession,
@@ -11,7 +12,7 @@ import {
   getElapsedMs,
   attachDbSessionId,
 } from "./session";
-import { initSync, flush } from "./sync";
+import { initSync, flush, getStatus } from "./sync";
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
@@ -153,10 +154,14 @@ async function enqueuePending(event: PendingEvent): Promise<void> {
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage;
+type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage;
 
 chrome.runtime.onMessage.addListener(
-  (message: IncomingMessage, _sender, sendResponse: (r: AuthResponse | SessionResponse) => void) => {
+  (
+    message: IncomingMessage,
+    _sender,
+    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse) => void,
+  ) => {
     if (message.type === "AUTH_LOGIN") {
       if (DEV_MODE) {
         storeAuth("dev.fake.jwt", Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -322,6 +327,20 @@ chrome.runtime.onMessage.addListener(
         void enqueuePending(event);
       });
       return false;
+    }
+
+    // ─── Sync messages ───────────────────────────────────────────────────────
+
+    if (message.type === "SYNC_GET_STATUS") {
+      getStatus()
+        .then((status) => sendResponse({ success: true, ...status }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
     }
 
     // ─── Content script messages ─────────────────────────────────────────────

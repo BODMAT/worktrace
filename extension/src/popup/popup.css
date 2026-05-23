@@ -154,8 +154,8 @@ body {
 /* ── popup__sync ───────────────────────────────────────────────────────────── */
 .popup__sync {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: 4px;
@@ -165,7 +165,23 @@ body {
   transition: border-color 0.3s, color 0.3s;
 }
 
+.popup__sync-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .popup__sync-icon { color: var(--c-yellow); }
+
+.popup__sync-meta {
+  font-size: 10px;
+  color: var(--c-muted);
+  padding-left: 18px;
+}
+
+.popup__sync-meta--error {
+  color: var(--c-pink);
+}
 
 .popup__sync--has-events {
   border-color: color-mix(in srgb, var(--c-yellow) 25%, transparent);
