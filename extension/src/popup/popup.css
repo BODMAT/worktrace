@@ -52,11 +52,27 @@ body {
   filter: drop-shadow(0 0 4px var(--c-cyan));
 }
 
+.popup__logo-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
 .popup__logo-text {
   font-size: 13px;
   font-weight: 700;
   color: var(--c-cyan);
   text-shadow: 0 0 6px color-mix(in srgb, var(--c-cyan) 60%, transparent);
+}
+
+.popup__user-email {
+  font-size: 9px;
+  color: var(--c-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 }
 
 /* ── popup__status ─────────────────────────────────────────────────────────── */
@@ -154,8 +170,8 @@ body {
 /* ── popup__sync ───────────────────────────────────────────────────────────── */
 .popup__sync {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: 4px;
@@ -165,7 +181,23 @@ body {
   transition: border-color 0.3s, color 0.3s;
 }
 
+.popup__sync-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .popup__sync-icon { color: var(--c-yellow); }
+
+.popup__sync-meta {
+  font-size: 10px;
+  color: var(--c-muted);
+  padding-left: 18px;
+}
+
+.popup__sync-meta--error {
+  color: var(--c-pink);
+}
 
 .popup__sync--has-events {
   border-color: color-mix(in srgb, var(--c-yellow) 25%, transparent);

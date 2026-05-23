@@ -1,6 +1,8 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { ContentMessage } from "../types/content";
+import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
+import type { SyncMessage, SyncResponse } from "../types/sync";
 import {
   getSession,
   startSession,
@@ -8,7 +10,9 @@ import {
   pauseSession,
   resumeSession,
   getElapsedMs,
+  attachDbSessionId,
 } from "./session";
+import { initSync, flush, getStatus } from "./sync";
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
@@ -33,6 +37,17 @@ async function clearAuth(): Promise<void> {
 
 function isExpired(expiresAt: number): boolean {
   return Date.now() >= expiresAt - EXPIRY_BUFFER_MS;
+}
+
+function decodeEmail(jwt: string): string | null {
+  try {
+    const payloadB64 = jwt.split(".")[1];
+    if (!payloadB64) return null;
+    const payload = JSON.parse(atob(payloadB64)) as { email?: string };
+    return payload.email ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Google OAuth ──────────────────────────────────────────────────────────────
@@ -110,12 +125,54 @@ export async function apiFetch(
   });
 }
 
+// ─── DB session lifecycle ──────────────────────────────────────────────────────
+
+// Best-effort: ensures the active local session has a DB-backed CUID.
+// Called on SESSION_START and again by the sync alarm before each flush.
+// Returns the dbSessionId on success, null otherwise.
+export async function ensureDbSession(): Promise<string | null> {
+  const session = await getSession();
+  if (!session) return null;
+  if (session.dbSessionId) return session.dbSessionId;
+
+  try {
+    const res = await apiFetch("/api/v1/sessions", { method: "POST" });
+    if (!res.ok) return null;
+    const { id } = await res.json() as { id: string };
+    const updated = await attachDbSessionId(id);
+    return updated?.dbSessionId ?? id;
+  } catch {
+    return null;
+  }
+}
+
+async function tryEndDbSession(dbSessionId: string): Promise<void> {
+  try {
+    await apiFetch(`/api/v1/sessions/${dbSessionId}`, { method: "PATCH" });
+  } catch {
+    // Best-effort — losing endedAt is acceptable per AC 5 plan
+  }
+}
+
+// ─── Pending event queue ───────────────────────────────────────────────────────
+
+async function enqueuePending(event: PendingEvent): Promise<void> {
+  const r = await chrome.storage.local.get("pendingEvents");
+  const pending = (r["pendingEvents"] as PendingEvent[] | undefined) ?? [];
+  pending.push(event);
+  await chrome.storage.local.set({ pendingEvents: pending });
+}
+
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage;
+type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage;
 
 chrome.runtime.onMessage.addListener(
-  (message: IncomingMessage, _sender, sendResponse: (r: AuthResponse | SessionResponse) => void) => {
+  (
+    message: IncomingMessage,
+    _sender,
+    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse) => void,
+  ) => {
     if (message.type === "AUTH_LOGIN") {
       if (DEV_MODE) {
         storeAuth("dev.fake.jwt", Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -153,12 +210,14 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "AUTH_GET_STATUS") {
       getStoredAuth()
-        .then((stored) =>
+        .then((stored) => {
+          const authed = stored !== null && !isExpired(stored.jwtExpiresAt);
           sendResponse({
             success: true,
-            isAuthenticated: stored !== null && !isExpired(stored.jwtExpiresAt),
-          }),
-        )
+            isAuthenticated: authed,
+            email: authed && stored ? decodeEmail(stored.jwt) : null,
+          });
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -172,12 +231,14 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_START") {
       startSession()
-        .then((session) =>
+        .then((session) => {
           sendResponse({
             success: true,
             session: { ...session, elapsedMs: getElapsedMs(session) },
-          }),
-        )
+          });
+          // Fire-and-forget DB session creation — retried by sync alarm if it fails
+          if (!session.dbSessionId) void ensureDbSession();
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -188,13 +249,18 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === "SESSION_STOP") {
-      stopSession()
-        .then((session) =>
+      (async () => {
+        // Drain before clearing the session — once cleared, flush would exit early
+        await flush();
+        return stopSession();
+      })()
+        .then((session) => {
           sendResponse({
             success: true,
             session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
-          }),
-        )
+          });
+          if (session?.dbSessionId) void tryEndDbSession(session.dbSessionId);
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -264,19 +330,30 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "NOTE_ADD") {
       getSession().then((session) => {
         if (!session || session.pausedAt !== null) return;
-        chrome.storage.local.get("pendingEvents").then((r) => {
-          const pending = (r["pendingEvents"] as unknown[]) ?? [];
-          pending.push({
-            url: "",
-            title: "Note",
-            content: message.text,
-            tags: ["note", ...message.tags],
-            timestamp: new Date().toISOString(),
-          });
-          chrome.storage.local.set({ pendingEvents: pending });
-        });
+        const event: PendingEvent = {
+          url:       `worktrace://note/${crypto.randomUUID()}`,
+          title:     message.text.slice(0, 80) || "Note",
+          content:   message.text,
+          tags:      ["note", ...message.tags],
+          timestamp: new Date().toISOString(),
+        };
+        void enqueuePending(event);
       });
       return false;
+    }
+
+    // ─── Sync messages ───────────────────────────────────────────────────────
+
+    if (message.type === "SYNC_GET_STATUS") {
+      getStatus()
+        .then((status) => sendResponse({ success: true, ...status }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
     }
 
     // ─── Content script messages ─────────────────────────────────────────────
@@ -285,12 +362,16 @@ chrome.runtime.onMessage.addListener(
       // Store metadata only when a session is active (AC 5 will batch-send it)
       getSession().then((session) => {
         if (!session) return;
-        // Stored for AC 5 batch sync — no response needed
-        chrome.storage.local.get("pendingEvents").then((r) => {
-          const pending = (r["pendingEvents"] as unknown[]) ?? [];
-          pending.push({ ...message.payload, timestamp: new Date().toISOString() });
-          chrome.storage.local.set({ pendingEvents: pending });
-        });
+        const { url, title, metaDescription, headings } = message.payload;
+        const content = [metaDescription, ...headings].filter(Boolean).join(" | ") || null;
+        const event: PendingEvent = {
+          url,
+          title,
+          content,
+          tags: [],
+          timestamp: new Date().toISOString(),
+        };
+        void enqueuePending(event);
       });
       return false; // no async response needed
     }
@@ -304,3 +385,6 @@ chrome.runtime.onMessage.addListener(
 chrome.runtime.onInstalled.addListener((details) => {
   console.log("[worktrace] service worker installed:", details.reason);
 });
+
+// Boot sync alarm — runs every service-worker startup, idempotent under chrome.alarms
+initSync({ apiFetch, ensureDbSession });

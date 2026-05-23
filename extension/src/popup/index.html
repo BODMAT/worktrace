@@ -13,7 +13,10 @@
       <header class="popup__header">
         <div class="popup__logo">
           <span class="popup__logo-icon">⬡</span>
-          <span class="popup__logo-text">WORKTRACE</span>
+          <div class="popup__logo-stack">
+            <span class="popup__logo-text">WORKTRACE</span>
+            <span class="popup__user-email" id="user-email" hidden></span>
+          </div>
         </div>
         <div class="popup__header-right">
           <div class="popup__status" id="status-badge">
@@ -41,8 +44,11 @@
 
       <!-- Sync -->
       <div class="popup__sync" id="sync-indicator">
-        <span class="popup__sync-icon">⚡</span>
-        <span class="popup__sync-count" id="sync-label">0 events queued</span>
+        <div class="popup__sync-row">
+          <span class="popup__sync-icon">⚡</span>
+          <span class="popup__sync-count" id="sync-label">0 events queued</span>
+        </div>
+        <div class="popup__sync-meta" id="sync-meta">not synced yet</div>
       </div>
 
       <!-- Notes -->

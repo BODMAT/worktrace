@@ -10,6 +10,6 @@ export type AuthMessage =
 
 export type AuthResponse =
   | { success: true; jwt: string }
-  | { success: true; isAuthenticated: boolean }
+  | { success: true; isAuthenticated: boolean; email: string | null }
   | { success: true }
   | { success: false; error: string };

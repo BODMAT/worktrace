@@ -1,5 +1,6 @@
 export interface Session {
   id: string;
+  dbSessionId: string | null; // CUID returned by POST /api/v1/sessions, null until first sync
   startedAt: number; // Unix ms
   totalActiveMs: number; // accumulated active time
   pausedAt: number | null; // null = active, number = paused since
