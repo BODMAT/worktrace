@@ -1,5 +1,6 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { ContentMessage } from "../types/content";
+import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
 import {
   getSession,
@@ -133,6 +134,15 @@ async function tryEndDbSession(dbSessionId: string): Promise<void> {
   } catch {
     // Best-effort — losing endedAt is acceptable per AC 5 plan
   }
+}
+
+// ─── Pending event queue ───────────────────────────────────────────────────────
+
+async function enqueuePending(event: PendingEvent): Promise<void> {
+  const r = await chrome.storage.local.get("pendingEvents");
+  const pending = (r["pendingEvents"] as PendingEvent[] | undefined) ?? [];
+  pending.push(event);
+  await chrome.storage.local.set({ pendingEvents: pending });
 }
 
 // ─── Message listener ──────────────────────────────────────────────────────────
@@ -292,17 +302,14 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "NOTE_ADD") {
       getSession().then((session) => {
         if (!session || session.pausedAt !== null) return;
-        chrome.storage.local.get("pendingEvents").then((r) => {
-          const pending = (r["pendingEvents"] as unknown[]) ?? [];
-          pending.push({
-            url: "",
-            title: "Note",
-            content: message.text,
-            tags: ["note", ...message.tags],
-            timestamp: new Date().toISOString(),
-          });
-          chrome.storage.local.set({ pendingEvents: pending });
-        });
+        const event: PendingEvent = {
+          url:       `worktrace://note/${crypto.randomUUID()}`,
+          title:     message.text.slice(0, 80) || "Note",
+          content:   message.text,
+          tags:      ["note", ...message.tags],
+          timestamp: new Date().toISOString(),
+        };
+        void enqueuePending(event);
       });
       return false;
     }
@@ -313,12 +320,16 @@ chrome.runtime.onMessage.addListener(
       // Store metadata only when a session is active (AC 5 will batch-send it)
       getSession().then((session) => {
         if (!session) return;
-        // Stored for AC 5 batch sync — no response needed
-        chrome.storage.local.get("pendingEvents").then((r) => {
-          const pending = (r["pendingEvents"] as unknown[]) ?? [];
-          pending.push({ ...message.payload, timestamp: new Date().toISOString() });
-          chrome.storage.local.set({ pendingEvents: pending });
-        });
+        const { url, title, metaDescription, headings } = message.payload;
+        const content = [metaDescription, ...headings].filter(Boolean).join(" | ") || null;
+        const event: PendingEvent = {
+          url,
+          title,
+          content,
+          tags: [],
+          timestamp: new Date().toISOString(),
+        };
+        void enqueuePending(event);
       });
       return false; // no async response needed
     }
