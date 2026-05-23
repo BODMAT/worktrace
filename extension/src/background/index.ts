@@ -11,6 +11,7 @@ import {
   getElapsedMs,
   attachDbSessionId,
 } from "./session";
+import { initSync, flush } from "./sync";
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
@@ -114,17 +115,22 @@ export async function apiFetch(
 
 // ─── DB session lifecycle ──────────────────────────────────────────────────────
 
-// Best-effort: attempts to create a DB Session and store its CUID on the local
-// session. Failures are swallowed — the sync alarm (AC 5) retries via
-// ensureDbSession() before each flush.
-export async function tryCreateDbSession(): Promise<void> {
+// Best-effort: ensures the active local session has a DB-backed CUID.
+// Called on SESSION_START and again by the sync alarm before each flush.
+// Returns the dbSessionId on success, null otherwise.
+export async function ensureDbSession(): Promise<string | null> {
+  const session = await getSession();
+  if (!session) return null;
+  if (session.dbSessionId) return session.dbSessionId;
+
   try {
     const res = await apiFetch("/api/v1/sessions", { method: "POST" });
-    if (!res.ok) return;
+    if (!res.ok) return null;
     const { id } = await res.json() as { id: string };
-    await attachDbSessionId(id);
+    const updated = await attachDbSessionId(id);
+    return updated?.dbSessionId ?? id;
   } catch {
-    // Network/auth failure — leave dbSessionId null, sync will retry
+    return null;
   }
 }
 
@@ -213,7 +219,7 @@ chrome.runtime.onMessage.addListener(
             session: { ...session, elapsedMs: getElapsedMs(session) },
           });
           // Fire-and-forget DB session creation — retried by sync alarm if it fails
-          if (!session.dbSessionId) void tryCreateDbSession();
+          if (!session.dbSessionId) void ensureDbSession();
         })
         .catch((err: unknown) =>
           sendResponse({
@@ -225,7 +231,11 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === "SESSION_STOP") {
-      stopSession()
+      (async () => {
+        // Drain before clearing the session — once cleared, flush would exit early
+        await flush();
+        return stopSession();
+      })()
         .then((session) => {
           sendResponse({
             success: true,
@@ -343,3 +353,6 @@ chrome.runtime.onMessage.addListener(
 chrome.runtime.onInstalled.addListener((details) => {
   console.log("[worktrace] service worker installed:", details.reason);
 });
+
+// Boot sync alarm — runs every service-worker startup, idempotent under chrome.alarms
+initSync({ apiFetch, ensureDbSession });

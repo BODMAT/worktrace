@@ -27,7 +27,7 @@ export default defineManifest({
       run_at: "document_idle",
     },
   ],
-  permissions: ["storage", "activeTab", "tabs", "identity"],
+  permissions: ["storage", "activeTab", "tabs", "identity", "alarms"],
   host_permissions: [
     "http://localhost:3000/*",
     "https://worktrace-ecru.vercel.app/*",
