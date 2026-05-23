@@ -33,12 +33,21 @@ export async function startSession(): Promise<Session> {
 
   const session: Session = {
     id: crypto.randomUUID(),
+    dbSessionId: null,
     startedAt: Date.now(),
     totalActiveMs: 0,
     pausedAt: null,
   };
   await saveSession(session);
   return session;
+}
+
+export async function attachDbSessionId(dbSessionId: string): Promise<Session | null> {
+  const session = await getSession();
+  if (!session || session.dbSessionId) return session;
+  const updated: Session = { ...session, dbSessionId };
+  await saveSession(updated);
+  return updated;
 }
 
 export async function stopSession(): Promise<Session | null> {

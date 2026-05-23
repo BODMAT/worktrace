@@ -8,6 +8,7 @@ import {
   pauseSession,
   resumeSession,
   getElapsedMs,
+  attachDbSessionId,
 } from "./session";
 
 const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
@@ -110,6 +111,30 @@ export async function apiFetch(
   });
 }
 
+// ─── DB session lifecycle ──────────────────────────────────────────────────────
+
+// Best-effort: attempts to create a DB Session and store its CUID on the local
+// session. Failures are swallowed — the sync alarm (AC 5) retries via
+// ensureDbSession() before each flush.
+export async function tryCreateDbSession(): Promise<void> {
+  try {
+    const res = await apiFetch("/api/v1/sessions", { method: "POST" });
+    if (!res.ok) return;
+    const { id } = await res.json() as { id: string };
+    await attachDbSessionId(id);
+  } catch {
+    // Network/auth failure — leave dbSessionId null, sync will retry
+  }
+}
+
+async function tryEndDbSession(dbSessionId: string): Promise<void> {
+  try {
+    await apiFetch(`/api/v1/sessions/${dbSessionId}`, { method: "PATCH" });
+  } catch {
+    // Best-effort — losing endedAt is acceptable per AC 5 plan
+  }
+}
+
 // ─── Message listener ──────────────────────────────────────────────────────────
 
 type IncomingMessage = AuthMessage | SessionMessage | ContentMessage;
@@ -172,12 +197,14 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_START") {
       startSession()
-        .then((session) =>
+        .then((session) => {
           sendResponse({
             success: true,
             session: { ...session, elapsedMs: getElapsedMs(session) },
-          }),
-        )
+          });
+          // Fire-and-forget DB session creation — retried by sync alarm if it fails
+          if (!session.dbSessionId) void tryCreateDbSession();
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -189,12 +216,13 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_STOP") {
       stopSession()
-        .then((session) =>
+        .then((session) => {
           sendResponse({
             success: true,
             session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
-          }),
-        )
+          });
+          if (session?.dbSessionId) void tryEndDbSession(session.dbSessionId);
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,
