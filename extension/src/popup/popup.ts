@@ -49,6 +49,7 @@ const btnStop      = document.getElementById("btn-stop")        as HTMLButtonEle
 const syncEl       = document.getElementById("sync-indicator")  as HTMLDivElement;
 const syncLabel    = document.getElementById("sync-label")      as HTMLSpanElement;
 const syncMeta     = document.getElementById("sync-meta")       as HTMLDivElement;
+const userEmail    = document.getElementById("user-email")      as HTMLSpanElement;
 const noteInput    = document.getElementById("note-input")      as HTMLInputElement;
 const tagsInput    = document.getElementById("tags-input")      as HTMLInputElement;
 const btnNote      = document.getElementById("btn-note")        as HTMLButtonElement;
@@ -82,16 +83,24 @@ function applyState(state: UIState, elapsedMs = 0): void {
   btnNote.disabled  = state !== "active";
 }
 
-function showAuthenticated(): void {
+function showAuthenticated(email: string | null): void {
   authSection.style.display = "none";
   timerSection.style.display = "flex";
   btnLogout.hidden = false;
+  if (email) {
+    userEmail.textContent = email;
+    userEmail.hidden = false;
+  } else {
+    userEmail.hidden = true;
+  }
 }
 
 function showUnauthenticated(): void {
   authSection.style.display = "flex";
   timerSection.style.display = "none";
   btnLogout.hidden = true;
+  userEmail.hidden = true;
+  userEmail.textContent = "";
   stopPolling();
   applyState("idle");
 }
@@ -159,7 +168,7 @@ async function init(): Promise<void> {
     return;
   }
 
-  showAuthenticated();
+  showAuthenticated(authRes.email);
 
   const res = await sendSession({ type: "SESSION_GET_STATE" }).catch(() => null);
   if (res?.success && "session" in res) {

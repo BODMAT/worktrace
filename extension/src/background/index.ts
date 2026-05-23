@@ -39,6 +39,17 @@ function isExpired(expiresAt: number): boolean {
   return Date.now() >= expiresAt - EXPIRY_BUFFER_MS;
 }
 
+function decodeEmail(jwt: string): string | null {
+  try {
+    const payloadB64 = jwt.split(".")[1];
+    if (!payloadB64) return null;
+    const payload = JSON.parse(atob(payloadB64)) as { email?: string };
+    return payload.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Google OAuth ──────────────────────────────────────────────────────────────
 
 async function launchGoogleOAuth(): Promise<string> {
@@ -199,12 +210,14 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "AUTH_GET_STATUS") {
       getStoredAuth()
-        .then((stored) =>
+        .then((stored) => {
+          const authed = stored !== null && !isExpired(stored.jwtExpiresAt);
           sendResponse({
             success: true,
-            isAuthenticated: stored !== null && !isExpired(stored.jwtExpiresAt),
-          }),
-        )
+            isAuthenticated: authed,
+            email: authed && stored ? decodeEmail(stored.jwt) : null,
+          });
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,
