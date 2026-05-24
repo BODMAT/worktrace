@@ -51,12 +51,14 @@ model Event {
 }
 
 model Track {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   sessionId  String
   artist     String
   title      String
-  capturedAt DateTime @default(now())
-  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  capturedAt DateTime  @default(now())
+  endedAt    DateTime?
+  session    Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
+  @@index([capturedAt])
 }
