@@ -178,10 +178,13 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
     const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
     if (track) {
       await chrome.storage.local.set({ currentTrack: track });
-      // Save to DB if session is active (same as TRACK_CAPTURED flow)
-      const session = await getSession();
-      if (session && session.pausedAt === null && session.dbSessionId) {
-        void saveTrackToDb(track, session.dbSessionId);
+      // Save to DB only if we don't already have a DB record for this tab pull
+      const existing = await chrome.storage.local.get("currentDbTrackId");
+      if (!existing["currentDbTrackId"]) {
+        const session = await getSession();
+        if (session && session.pausedAt === null && session.dbSessionId) {
+          void saveTrackToDb(track, session.dbSessionId);
+        }
       }
     }
     return track;
@@ -190,21 +193,39 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
   }
 }
 
-// ─── Music: save track to DB ───────────────────────────────────────────────────
+// ─── Music: save / end track in DB ────────────────────────────────────────────
 
-// Best-effort — errors are logged but never surface to the user
+// Saves a new track to DB and stores its id for later endedAt update.
+// Best-effort — errors are logged but never surface to the user.
 async function saveTrackToDb(track: TrackInfo, dbSessionId: string): Promise<void> {
   try {
-    await apiFetch("/api/v1/tracks", {
+    const res  = await apiFetch("/api/v1/tracks", {
       method: "POST",
-      body: JSON.stringify({
-        sessionId: dbSessionId,
-        artist:    track.artist,
-        title:     track.title,
-      }),
+      body:   JSON.stringify({ sessionId: dbSessionId, artist: track.artist, title: track.title }),
     });
+    if (!res.ok) return;
+    const { id } = await res.json() as { id: string };
+    await chrome.storage.local.set({ currentDbTrackId: id });
   } catch (err) {
     console.warn("[worktrace] track save failed:", err);
+  }
+}
+
+// Closes the previous DB track record with endedAt = now.
+async function endCurrentDbTrack(): Promise<void> {
+  const r = await chrome.storage.local.get("currentDbTrackId");
+  const id = r["currentDbTrackId"] as string | undefined;
+  if (!id) return;
+
+  try {
+    await apiFetch(`/api/v1/tracks/${id}`, {
+      method: "PATCH",
+      body:   JSON.stringify({ endedAt: new Date().toISOString() }),
+    });
+  } catch (err) {
+    console.warn("[worktrace] track end failed:", err);
+  } finally {
+    await chrome.storage.local.remove("currentDbTrackId");
   }
 }
 
@@ -304,7 +325,7 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_STOP") {
       (async () => {
-        // Drain before clearing the session — once cleared, flush would exit early
+        await endCurrentDbTrack(); // record endedAt for the last playing track
         await flush();
         return stopSession();
       })()
@@ -416,14 +437,15 @@ chrome.runtime.onMessage.addListener(
       const track = message.payload;
       void chrome.storage.local.set({ currentTrack: track });
 
-      // Best-effort: save to DB only while session is active
-      getSession().then((session) => {
+      // Close the previous track then save the new one
+      getSession().then(async (session) => {
+        await endCurrentDbTrack(); // no-op if no previous track
         if (session && session.pausedAt === null && session.dbSessionId) {
           void saveTrackToDb(track, session.dbSessionId);
         }
       });
 
-      return false; // no async response
+      return false;
     }
 
     if (message.type === "TRACK_GET_CURRENT") {
