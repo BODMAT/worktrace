@@ -64,10 +64,11 @@ const userEmail    = document.getElementById("user-email")      as HTMLSpanEleme
 const noteInput    = document.getElementById("note-input")      as HTMLInputElement;
 const tagsInput    = document.getElementById("tags-input")      as HTMLInputElement;
 const btnNote      = document.getElementById("btn-note")        as HTMLButtonElement;
-const trackSection = document.getElementById("track-section")   as HTMLDivElement;
-const trackTitle   = document.getElementById("track-title")     as HTMLSpanElement;
-const trackArtist  = document.getElementById("track-artist")    as HTMLSpanElement;
-const trackSource  = document.getElementById("track-source")    as HTMLSpanElement;
+const trackSection  = document.getElementById("track-section")   as HTMLDivElement;
+const trackTitle    = document.getElementById("track-title")     as HTMLSpanElement;
+const trackArtist   = document.getElementById("track-artist")    as HTMLSpanElement;
+const trackSource   = document.getElementById("track-source")    as HTMLSpanElement;
+const trackDuration = document.getElementById("track-duration")  as HTMLSpanElement;
 
 // ─── Timer formatting ──────────────────────────────────────────────────────────
 
@@ -149,19 +150,35 @@ async function refreshSyncIndicator(): Promise<void> {
 
 // ─── Now Playing ──────────────────────────────────────────────────────────────
 
+let activeTrack: TrackInfo | null = null;
+
+function formatTrackDuration(capturedAt: string): string {
+  const sec = Math.floor((Date.now() - new Date(capturedAt).getTime()) / 1000);
+  const m   = Math.floor(sec / 60);
+  const s   = sec % 60;
+  return `${String(m)}:${String(s).padStart(2, "0")}`;
+}
+
 function applyTrack(track: TrackInfo | null): void {
+  activeTrack = track;
+
   if (!track) {
     trackSection.style.display = "none";
     return;
   }
 
   trackSection.style.display = "flex";
-  trackTitle.textContent  = track.title;
-  trackArtist.textContent = track.artist;
+  trackTitle.textContent    = track.title;
+  trackArtist.textContent   = track.artist;
+  trackDuration.textContent = formatTrackDuration(track.capturedAt);
 
   const isYTM = track.source === "youtube-music";
-  trackSource.textContent  = isYTM ? "YTM" : "SC";
-  trackSource.className    = `popup__track-source popup__track-source--${isYTM ? "ytm" : "sc"}`;
+  trackSource.textContent = isYTM ? "YTM" : "SC";
+  trackSource.className   = `popup__track-source popup__track-source--${isYTM ? "ytm" : "sc"}`;
+}
+
+function refreshDuration(): void {
+  if (activeTrack) trackDuration.textContent = formatTrackDuration(activeTrack.capturedAt);
 }
 
 async function refreshTrack(): Promise<void> {
@@ -189,6 +206,7 @@ function startPolling(): void {
     }
     await refreshSyncIndicator();
     await refreshTrack();
+    refreshDuration(); // update elapsed time without extra round-trip
   }, 1000);
 }
 

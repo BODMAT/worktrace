@@ -249,14 +249,27 @@ body {
   text-overflow: ellipsis;
 }
 
-.popup__track-source {
+.popup__track-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
   flex-shrink: 0;
+}
+
+.popup__track-source {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.05em;
   padding: 2px 5px;
   border-radius: 3px;
   border: 1px solid currentColor;
+}
+
+.popup__track-duration {
+  font-size: 9px;
+  color: var(--c-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .popup__track-source--ytm {
