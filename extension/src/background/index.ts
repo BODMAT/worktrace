@@ -157,6 +157,24 @@ async function tryEndDbSession(dbSessionId: string): Promise<void> {
 
 // ─── Music: pull track from active tab ────────────────────────────────────────
 
+// Returns current playbackTime from the music tab without any side effects.
+// Used by TRACK_GET_CURRENT every popup tick so the popup always has a fresh
+// playback position — changes every ~1s when playing, stays constant on pause.
+async function queryLivePlaybackTime(): Promise<string | null> {
+  const [ytmTabs, scTabs] = await Promise.all([
+    chrome.tabs.query({ url: "https://music.youtube.com/*" }),
+    chrome.tabs.query({ url: "https://soundcloud.com/*" }),
+  ]);
+  const tab = ([...ytmTabs, ...scTabs].find((t) => t.active) ?? [...ytmTabs, ...scTabs][0]);
+  if (!tab?.id) return null;
+  try {
+    const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
+    return track?.playbackTime ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Queries the active YTM or SoundCloud tab directly via content script.
 // Used as fallback when currentTrack is not yet in storage (SW was inactive at
 // the time the content script first ran and the message was dropped).
@@ -375,8 +393,12 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_PAUSE") {
       (async () => {
+        // pauseSession() first — updates storage immediately so SESSION_GET_STATE
+        // returns "paused" before the (slow) endCurrentDbTrack API call finishes.
+        // This prevents the popup poll from seeing "active" and re-enabling the timer.
+        const session = await pauseSession();
         await endCurrentDbTrack(); // record listenedMs up to pause point
-        return pauseSession();
+        return session;
       })()
         .then((session) =>
           sendResponse({
@@ -464,12 +486,25 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "TRACK_GET_CURRENT") {
       (async () => {
-        const r     = await chrome.storage.local.get("currentTrack");
-        let   track = (r["currentTrack"] as TrackInfo | undefined) ?? null;
+        const r       = await chrome.storage.local.get("currentTrack");
+        const stored  = (r["currentTrack"] as TrackInfo | undefined) ?? null;
 
-        // Fallback: ask the active music tab directly — handles the SW race
-        // condition where the initial TRACK_CAPTURED message was dropped
-        if (!track) track = await queryActiveTabForTrack();
+        if (!stored) {
+          // No stored track — full tab query (saves to storage + DB if needed)
+          const track = await queryActiveTabForTrack();
+          sendResponse({ success: true, track });
+          return;
+        }
+
+        // Track exists in storage. SW is already awake (popup just woke it), so
+        // querying the content script directly is reliable and gives fresh
+        // playbackTime — the current position from the player bar DOM.
+        // This changes every ~1s when playing and stays constant on pause,
+        // letting the popup detect pause state by comparing consecutive values.
+        const livePlaybackTime = await queryLivePlaybackTime();
+        const track: TrackInfo = livePlaybackTime !== null
+          ? { ...stored, playbackTime: livePlaybackTime }
+          : stored;
 
         sendResponse({ success: true, track });
       })().catch((err: unknown) =>

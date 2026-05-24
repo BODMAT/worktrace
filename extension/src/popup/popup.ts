@@ -158,9 +158,13 @@ async function refreshSyncIndicator(): Promise<void> {
 // ─── Now Playing ──────────────────────────────────────────────────────────────
 
 let activeTrack: TrackInfo | null = null;
-// Accumulated display duration in ms — only increments while session is active.
+// Accumulated display duration in ms — only increments while session is active
+// AND music is actually playing (detected by playbackTime changing).
 // Reset to 0 on track change; initialised from capturedAt on first popup load.
 let displayDurationMs = 0;
+// Previous playbackTime value — compared each tick to detect play vs pause.
+// null = not yet initialised (first tick after track appears).
+let prevPlaybackTime: string | null = null;
 
 function formatTrackDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -173,11 +177,12 @@ function applyTrack(track: TrackInfo | null): void {
   const prevKey = activeTrack ? `${activeTrack.title}::${activeTrack.artist}` : null;
   const newKey  = track       ? `${track.title}::${track.artist}`             : null;
 
-  // Reset duration counter only when the track actually changes
+  // Reset duration counter and playback-time baseline when track changes
   if (newKey !== prevKey) {
     displayDurationMs = track
       ? Math.max(0, Date.now() - new Date(track.capturedAt).getTime())
       : 0;
+    prevPlaybackTime = null;
   }
 
   activeTrack = track;
@@ -199,8 +204,18 @@ function applyTrack(track: TrackInfo | null): void {
 
 function refreshDuration(): void {
   if (!activeTrack) return;
-  // Only count time while the session is actively running
-  if (isSessionActive) displayDurationMs += 1000;
+
+  // Detect play/pause by comparing consecutive playbackTime values from the DOM.
+  // If playbackTime changed since last tick → playing. Same → paused.
+  // prevPlaybackTime = null on first tick → skip increment (safe default).
+  const curr = activeTrack.playbackTime ?? "";
+  const trackIsPlaying =
+    prevPlaybackTime !== null &&   // not first tick
+    curr !== "" &&                 // player returned a position
+    curr !== prevPlaybackTime;     // position advanced since last tick
+  prevPlaybackTime = curr;
+
+  if (isSessionActive && trackIsPlaying) displayDurationMs += 1000;
   trackDuration.textContent = formatTrackDuration(displayDurationMs);
 }
 

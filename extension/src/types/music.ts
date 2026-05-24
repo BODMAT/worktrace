@@ -1,8 +1,11 @@
 export interface TrackInfo {
-  title:      string;
-  artist:     string;
-  source:     "youtube-music" | "soundcloud";
-  capturedAt: string; // ISO 8601
+  title:        string;
+  artist:       string;
+  source:       "youtube-music" | "soundcloud";
+  capturedAt:   string; // ISO 8601
+  playbackTime: string; // current playback position from DOM (e.g. "1:23" or "94.5")
+                        // changes every ~1s when playing, stays constant on pause
+                        // empty string if the player bar is not yet rendered
 }
 
 export type MusicMessage =
