@@ -15,13 +15,20 @@ export interface SyncStatus {
 // Functions injected at startup to avoid circular import with background/index.ts
 type ApiFetch        = (path: string, init?: RequestInit) => Promise<Response>;
 type EnsureDbSession = () => Promise<string | null>;
+type CheckAuth       = () => Promise<boolean>;
 
 let apiFetchFn:        ApiFetch        | null = null;
 let ensureDbSessionFn: EnsureDbSession | null = null;
+let checkAuthFn:       CheckAuth       | null = null;
 
-export function initSync(deps: { apiFetch: ApiFetch; ensureDbSession: EnsureDbSession }): void {
+export function initSync(deps: {
+  apiFetch:        ApiFetch;
+  ensureDbSession: EnsureDbSession;
+  checkAuth:       CheckAuth;
+}): void {
   apiFetchFn        = deps.apiFetch;
   ensureDbSessionFn = deps.ensureDbSession;
+  checkAuthFn       = deps.checkAuth;
 
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: PERIOD_MIN });
   chrome.alarms.onAlarm.addListener((alarm) => {
@@ -47,7 +54,11 @@ async function setStatus(patch: Partial<SyncStatus>): Promise<void> {
 // ─── Flush ─────────────────────────────────────────────────────────────────────
 
 export async function flush(): Promise<void> {
-  if (!apiFetchFn || !ensureDbSessionFn) return;
+  if (!apiFetchFn || !ensureDbSessionFn || !checkAuthFn) return;
+
+  // Skip flush entirely if the user is not authenticated — avoids ERR_CONNECTION_REFUSED spam
+  const isAuth = await checkAuthFn();
+  if (!isAuth) return;
 
   const session = await getSession();
   if (!session) return;
