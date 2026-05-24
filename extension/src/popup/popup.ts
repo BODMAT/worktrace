@@ -1,4 +1,5 @@
 import type { AuthMessage, AuthResponse } from "../types/auth";
+import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
 import type { SessionMessage, SessionResponse, SessionState } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
 
@@ -34,6 +35,16 @@ function sendSync(msg: SyncMessage): Promise<SyncResponse> {
   );
 }
 
+function sendMusic(msg: MusicMessage): Promise<MusicResponse> {
+  return new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(msg, (res: MusicResponse | undefined) => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      if (!res) return reject(new Error("No response from background"));
+      resolve(res);
+    }),
+  );
+}
+
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
 
 const statusDot    = document.getElementById("status-dot")     as HTMLSpanElement;
@@ -53,6 +64,10 @@ const userEmail    = document.getElementById("user-email")      as HTMLSpanEleme
 const noteInput    = document.getElementById("note-input")      as HTMLInputElement;
 const tagsInput    = document.getElementById("tags-input")      as HTMLInputElement;
 const btnNote      = document.getElementById("btn-note")        as HTMLButtonElement;
+const trackSection = document.getElementById("track-section")   as HTMLDivElement;
+const trackTitle   = document.getElementById("track-title")     as HTMLSpanElement;
+const trackArtist  = document.getElementById("track-artist")    as HTMLSpanElement;
+const trackSource  = document.getElementById("track-source")    as HTMLSpanElement;
 
 // ─── Timer formatting ──────────────────────────────────────────────────────────
 
@@ -132,6 +147,29 @@ async function refreshSyncIndicator(): Promise<void> {
   }
 }
 
+// ─── Now Playing ──────────────────────────────────────────────────────────────
+
+function applyTrack(track: TrackInfo | null): void {
+  if (!track) {
+    trackSection.hidden = true;
+    return;
+  }
+
+  trackSection.hidden = false;
+  trackTitle.textContent  = track.title;
+  trackArtist.textContent = track.artist;
+
+  const isYTM = track.source === "youtube-music";
+  trackSource.textContent  = isYTM ? "YTM" : "SC";
+  trackSource.className    = `popup__track-source popup__track-source--${isYTM ? "ytm" : "sc"}`;
+}
+
+async function refreshTrack(): Promise<void> {
+  const res = await sendMusic({ type: "TRACK_GET_CURRENT" }).catch(() => null);
+  if (!res || !res.success) return;
+  applyTrack(res.track);
+}
+
 // ─── Session polling ───────────────────────────────────────────────────────────
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -150,6 +188,7 @@ function startPolling(): void {
       applyState("active", session.elapsedMs);
     }
     await refreshSyncIndicator();
+    await refreshTrack();
   }, 1000);
 }
 
@@ -179,6 +218,7 @@ async function init(): Promise<void> {
   }
 
   await refreshSyncIndicator();
+  await refreshTrack();
   startPolling();
 }
 
