@@ -1,5 +1,6 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { ContentMessage } from "../types/content";
+import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
 import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
@@ -154,6 +155,103 @@ async function tryEndDbSession(dbSessionId: string): Promise<void> {
   }
 }
 
+// ─── Music: pull track from active tab ────────────────────────────────────────
+
+// Returns current playbackTime from the music tab without any side effects.
+// Used by TRACK_GET_CURRENT every popup tick so the popup always has a fresh
+// playback position — changes every ~1s when playing, stays constant on pause.
+async function queryLivePlaybackTime(): Promise<string | null> {
+  const [ytmTabs, scTabs] = await Promise.all([
+    chrome.tabs.query({ url: "https://music.youtube.com/*" }),
+    chrome.tabs.query({ url: "https://soundcloud.com/*" }),
+  ]);
+  const tab = ([...ytmTabs, ...scTabs].find((t) => t.active) ?? [...ytmTabs, ...scTabs][0]);
+  if (!tab?.id) return null;
+  try {
+    const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
+    return track?.playbackTime ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Queries the active YTM or SoundCloud tab directly via content script.
+// Used as fallback when currentTrack is not yet in storage (SW was inactive at
+// the time the content script first ran and the message was dropped).
+async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
+  // Search by URL — more reliable than active/currentWindow from a service worker context
+  const [ytmTabs, scTabs] = await Promise.all([
+    chrome.tabs.query({ url: "https://music.youtube.com/*" }),
+    chrome.tabs.query({ url: "https://soundcloud.com/*" }),
+  ]);
+
+  const candidates = [...ytmTabs, ...scTabs];
+  if (candidates.length === 0) return null;
+
+  // Prefer an active tab; otherwise use the first match
+  const tab = candidates.find((t) => t.active) ?? candidates[0];
+  if (!tab?.id) return null;
+
+  try {
+    const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
+    if (track) {
+      await chrome.storage.local.set({ currentTrack: track });
+      // Save to DB only if we don't already have a DB record for this tab pull
+      const existing = await chrome.storage.local.get("currentDbTrackId");
+      if (!existing["currentDbTrackId"]) {
+        const session = await getSession();
+        if (session && session.pausedAt === null && session.dbSessionId) {
+          void saveTrackToDb(track, session.dbSessionId);
+        }
+      }
+    }
+    return track;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Music: save / end track in DB ────────────────────────────────────────────
+
+// Saves a new track to DB and stores its id + period start for listenedMs accumulation.
+// Best-effort — errors are logged but never surface to the user.
+async function saveTrackToDb(track: TrackInfo, dbSessionId: string): Promise<void> {
+  try {
+    const res  = await apiFetch("/api/v1/tracks", {
+      method: "POST",
+      body:   JSON.stringify({ sessionId: dbSessionId, artist: track.artist, title: track.title }),
+    });
+    if (!res.ok) return;
+    const { id } = await res.json() as { id: string };
+    // Store id and the moment this listening period started (for listenedMs delta)
+    await chrome.storage.local.set({ currentDbTrackId: id, currentPeriodStartMs: Date.now() });
+  } catch (err) {
+    console.warn("[worktrace] track save failed:", err);
+  }
+}
+
+// Closes the previous DB track record: sends endedAt + listenedMs delta.
+async function endCurrentDbTrack(): Promise<void> {
+  const r = await chrome.storage.local.get(["currentDbTrackId", "currentPeriodStartMs"]);
+  const id          = r["currentDbTrackId"]    as string | undefined;
+  const periodStart = r["currentPeriodStartMs"] as number | undefined;
+  if (!id) return;
+
+  const now        = Date.now();
+  const listenedMs = periodStart ? Math.max(0, now - periodStart) : 0;
+
+  try {
+    await apiFetch(`/api/v1/tracks/${id}`, {
+      method: "PATCH",
+      body:   JSON.stringify({ endedAt: new Date(now).toISOString(), listenedMs }),
+    });
+  } catch (err) {
+    console.warn("[worktrace] track end failed:", err);
+  } finally {
+    await chrome.storage.local.remove(["currentDbTrackId", "currentPeriodStartMs"]);
+  }
+}
+
 // ─── Pending event queue ───────────────────────────────────────────────────────
 
 async function enqueuePending(event: PendingEvent): Promise<void> {
@@ -165,13 +263,13 @@ async function enqueuePending(event: PendingEvent): Promise<void> {
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage;
+type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage;
 
 chrome.runtime.onMessage.addListener(
   (
     message: IncomingMessage,
     _sender,
-    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse) => void,
+    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse) => void,
   ) => {
     if (message.type === "AUTH_LOGIN") {
       if (DEV_MODE) {
@@ -250,7 +348,7 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_STOP") {
       (async () => {
-        // Drain before clearing the session — once cleared, flush would exit early
+        await endCurrentDbTrack(); // record endedAt for the last playing track
         await flush();
         return stopSession();
       })()
@@ -294,7 +392,14 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === "SESSION_PAUSE") {
-      pauseSession()
+      (async () => {
+        // pauseSession() first — updates storage immediately so SESSION_GET_STATE
+        // returns "paused" before the (slow) endCurrentDbTrack API call finishes.
+        // This prevents the popup poll from seeing "active" and re-enabling the timer.
+        const session = await pauseSession();
+        await endCurrentDbTrack(); // record listenedMs up to pause point
+        return session;
+      })()
         .then((session) =>
           sendResponse({
             success: true,
@@ -312,12 +417,18 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_RESUME") {
       resumeSession()
-        .then((session) =>
+        .then(async (session) => {
           sendResponse({
             success: true,
             session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
-          }),
-        )
+          });
+          // Re-open a DB track record for the currently playing song (if any)
+          if (session?.dbSessionId) {
+            const r = await chrome.storage.local.get("currentTrack");
+            const track = r["currentTrack"] as TrackInfo | undefined;
+            if (track) void saveTrackToDb(track, session.dbSessionId);
+          }
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,
@@ -356,6 +467,55 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    // ─── Music messages ──────────────────────────────────────────────────────
+
+    if (message.type === "TRACK_CAPTURED") {
+      const track = message.payload;
+      void chrome.storage.local.set({ currentTrack: track });
+
+      // Close the previous track then save the new one
+      getSession().then(async (session) => {
+        await endCurrentDbTrack(); // no-op if no previous track
+        if (session && session.pausedAt === null && session.dbSessionId) {
+          void saveTrackToDb(track, session.dbSessionId);
+        }
+      });
+
+      return false;
+    }
+
+    if (message.type === "TRACK_GET_CURRENT") {
+      (async () => {
+        const r       = await chrome.storage.local.get("currentTrack");
+        const stored  = (r["currentTrack"] as TrackInfo | undefined) ?? null;
+
+        if (!stored) {
+          // No stored track — full tab query (saves to storage + DB if needed)
+          const track = await queryActiveTabForTrack();
+          sendResponse({ success: true, track });
+          return;
+        }
+
+        // Track exists in storage. SW is already awake (popup just woke it), so
+        // querying the content script directly is reliable and gives fresh
+        // playbackTime — the current position from the player bar DOM.
+        // This changes every ~1s when playing and stays constant on pause,
+        // letting the popup detect pause state by comparing consecutive values.
+        const livePlaybackTime = await queryLivePlaybackTime();
+        const track: TrackInfo = livePlaybackTime !== null
+          ? { ...stored, playbackTime: livePlaybackTime }
+          : stored;
+
+        sendResponse({ success: true, track });
+      })().catch((err: unknown) =>
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        }),
+      );
+      return true;
+    }
+
     // ─── Content script messages ─────────────────────────────────────────────
 
     if (message.type === "PAGE_METADATA") {
@@ -387,4 +547,11 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 // Boot sync alarm — runs every service-worker startup, idempotent under chrome.alarms
-initSync({ apiFetch, ensureDbSession });
+initSync({
+  apiFetch,
+  ensureDbSession,
+  checkAuth: async () => {
+    const stored = await getStoredAuth();
+    return stored !== null && !isExpired(stored.jwtExpiresAt);
+  },
+});

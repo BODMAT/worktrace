@@ -3,6 +3,21 @@
 Chrome extension + Next.js dashboard for capturing dev session context
 and generating AI session reports.
 
+## ⚡ Local dev checklist — verify before starting work
+
+1. **Docker Desktop is running** — open it from the Start menu or tray.
+2. **PostgreSQL container is up** — `docker-compose up -d` from repo root.
+   - Verify: `docker ps` → should show `worktrace-postgres` with status `Up`.
+   - If Prisma throws `upsert / query` errors → DB is down, start Docker first.
+3. **Dashboard dev server** — `npm run dev` inside `/dashboard` (port 3000).
+4. **Extension points to localhost** — `extension/.env` has `VITE_DASHBOARD_URL=http://localhost:3000`.
+   - After any `.env` change → rebuild: `npm run build` inside `/extension`.
+
+> **Symptom guide**
+> - `ERR_CONNECTION_REFUSED` on fetch → dashboard not running or wrong URL
+> - `Invalid prisma.X() invocation` / `Can't reach database` → Docker / PostgreSQL not running
+> - Extension shows `⚠ JWT exchange failed` → dashboard not reachable (check steps 2–3 above)
+
 ## Repo layout
 - `/dashboard` — Next.js 16 (App Router) web app
 - `/extension` — Chrome Extension (Manifest V3) — coming in AC 4

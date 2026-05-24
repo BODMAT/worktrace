@@ -26,10 +26,22 @@ export default defineManifest({
       js: ["src/content/index.ts"],
       run_at: "document_idle",
     },
+    {
+      matches: ["https://music.youtube.com/*"],
+      js: ["src/content/ytm.ts"],
+      run_at: "document_idle",
+    },
+    {
+      matches: ["https://soundcloud.com/*"],
+      js: ["src/content/soundcloud.ts"],
+      run_at: "document_idle",
+    },
   ],
   permissions: ["storage", "activeTab", "tabs", "identity", "alarms"],
   host_permissions: [
     "http://localhost:3000/*",
     "https://worktrace-ecru.vercel.app/*",
+    "https://music.youtube.com/*",
+    "https://soundcloud.com/*",
   ],
 });

@@ -1,4 +1,5 @@
 import type { AuthMessage, AuthResponse } from "../types/auth";
+import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
 import type { SessionMessage, SessionResponse, SessionState } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
 
@@ -34,6 +35,16 @@ function sendSync(msg: SyncMessage): Promise<SyncResponse> {
   );
 }
 
+function sendMusic(msg: MusicMessage): Promise<MusicResponse> {
+  return new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(msg, (res: MusicResponse | undefined) => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      if (!res) return reject(new Error("No response from background"));
+      resolve(res);
+    }),
+  );
+}
+
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
 
 const statusDot    = document.getElementById("status-dot")     as HTMLSpanElement;
@@ -53,6 +64,11 @@ const userEmail    = document.getElementById("user-email")      as HTMLSpanEleme
 const noteInput    = document.getElementById("note-input")      as HTMLInputElement;
 const tagsInput    = document.getElementById("tags-input")      as HTMLInputElement;
 const btnNote      = document.getElementById("btn-note")        as HTMLButtonElement;
+const trackSection  = document.getElementById("track-section")   as HTMLDivElement;
+const trackTitle    = document.getElementById("track-title")     as HTMLSpanElement;
+const trackArtist   = document.getElementById("track-artist")    as HTMLSpanElement;
+const trackSource   = document.getElementById("track-source")    as HTMLSpanElement;
+const trackDuration = document.getElementById("track-duration")  as HTMLSpanElement;
 
 // ─── Timer formatting ──────────────────────────────────────────────────────────
 
@@ -68,7 +84,11 @@ function formatMs(ms: number): string {
 
 type UIState = "idle" | "active" | "paused";
 
+let isSessionActive = false; // true only when state === "active"
+
 function applyState(state: UIState, elapsedMs = 0): void {
+  isSessionActive = state === "active";
+
   timerEl.textContent = state === "idle" ? "00:00:00" : formatMs(elapsedMs);
 
   timerEl.className     = `popup__time popup__time--${state}`;
@@ -81,6 +101,9 @@ function applyState(state: UIState, elapsedMs = 0): void {
   btnStop.disabled  = state === "idle";
   btnPause.textContent = state === "paused" ? "▶ RESUME" : "⏸ PAUSE";
   btnNote.disabled  = state !== "active";
+
+  // Gray out the music block when session is not actively running
+  trackSection.classList.toggle("popup__track--inactive", !isSessionActive);
 }
 
 function showAuthenticated(email: string | null): void {
@@ -132,6 +155,76 @@ async function refreshSyncIndicator(): Promise<void> {
   }
 }
 
+// ─── Now Playing ──────────────────────────────────────────────────────────────
+
+let activeTrack: TrackInfo | null = null;
+// Accumulated display duration in ms — only increments while session is active
+// AND music is actually playing (detected by playbackTime changing).
+// Reset to 0 on track change; initialised from capturedAt on first popup load.
+let displayDurationMs = 0;
+// Previous playbackTime value — compared each tick to detect play vs pause.
+// null = not yet initialised (first tick after track appears).
+let prevPlaybackTime: string | null = null;
+
+function formatTrackDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m)}:${String(s).padStart(2, "0")}`;
+}
+
+function applyTrack(track: TrackInfo | null): void {
+  const prevKey = activeTrack ? `${activeTrack.title}::${activeTrack.artist}` : null;
+  const newKey  = track       ? `${track.title}::${track.artist}`             : null;
+
+  // Reset duration counter and playback-time baseline when track changes
+  if (newKey !== prevKey) {
+    displayDurationMs = track
+      ? Math.max(0, Date.now() - new Date(track.capturedAt).getTime())
+      : 0;
+    prevPlaybackTime = null;
+  }
+
+  activeTrack = track;
+
+  if (!track) {
+    trackSection.style.display = "none";
+    return;
+  }
+
+  trackSection.style.display = "flex";
+  trackTitle.textContent    = track.title;
+  trackArtist.textContent   = track.artist;
+  trackDuration.textContent = formatTrackDuration(displayDurationMs);
+
+  const isYTM = track.source === "youtube-music";
+  trackSource.textContent = isYTM ? "YTM" : "SC";
+  trackSource.className   = `popup__track-source popup__track-source--${isYTM ? "ytm" : "sc"}`;
+}
+
+function refreshDuration(): void {
+  if (!activeTrack) return;
+
+  // Detect play/pause by comparing consecutive playbackTime values from the DOM.
+  // If playbackTime changed since last tick → playing. Same → paused.
+  // prevPlaybackTime = null on first tick → skip increment (safe default).
+  const curr = activeTrack.playbackTime ?? "";
+  const trackIsPlaying =
+    prevPlaybackTime !== null &&   // not first tick
+    curr !== "" &&                 // player returned a position
+    curr !== prevPlaybackTime;     // position advanced since last tick
+  prevPlaybackTime = curr;
+
+  if (isSessionActive && trackIsPlaying) displayDurationMs += 1000;
+  trackDuration.textContent = formatTrackDuration(displayDurationMs);
+}
+
+async function refreshTrack(): Promise<void> {
+  const res = await sendMusic({ type: "TRACK_GET_CURRENT" }).catch(() => null);
+  if (!res || !res.success) return;
+  applyTrack(res.track);
+}
+
 // ─── Session polling ───────────────────────────────────────────────────────────
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -150,6 +243,8 @@ function startPolling(): void {
       applyState("active", session.elapsedMs);
     }
     await refreshSyncIndicator();
+    await refreshTrack();
+    refreshDuration(); // update elapsed time without extra round-trip
   }, 1000);
 }
 
@@ -179,6 +274,7 @@ async function init(): Promise<void> {
   }
 
   await refreshSyncIndicator();
+  await refreshTrack();
   startPolling();
 }
 
@@ -187,12 +283,19 @@ async function init(): Promise<void> {
 btnLogin.addEventListener("click", async () => {
   btnLogin.disabled = true;
   btnLogin.textContent = "Signing in...";
-  const res = await sendAuth({ type: "AUTH_LOGIN" }).catch(() => null);
+  const res = await sendAuth({ type: "AUTH_LOGIN" }).catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { success: false as const, error: msg };
+  });
   if (res?.success) {
     await init();
   } else {
     btnLogin.disabled = false;
-    btnLogin.textContent = "Sign in with Google";
+    const errMsg = "error" in res && res.error ? res.error : "Sign-in failed";
+    // Trim long error to keep the button readable; full error is in SW inspector
+    const short = errMsg.length > 40 ? `${errMsg.slice(0, 40)}…` : errMsg;
+    btnLogin.textContent = `⚠ ${short}`;
+    setTimeout(() => { btnLogin.textContent = "Sign in with Google"; }, 4000);
   }
 });
 
