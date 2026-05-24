@@ -292,15 +292,32 @@ feat(extension): display now-playing track in popup UI
 
 ---
 
-## Кількість комітів: 8
+## Кількість комітів: 14 (8 план + 4 фікси під час тестування + 2 доповнення)
 
-| # | Type | Scope | Description |
-|---|------|-------|-------------|
-| 1 | docs | plans | add AC6 music capture plan |
-| 2 | feat | extension | add TrackInfo types and music message definitions |
-| 3 | feat | extension | add YouTube Music content script with MutationObserver |
-| 4 | feat | extension | add SoundCloud content script with MutationObserver |
-| 5 | feat | extension | update manifest with music content scripts and host_permissions |
-| 6 | feat | extension | handle TRACK_CAPTURED in background and save to DB |
-| 7 | feat | dashboard | add POST /api/v1/tracks route handler |
-| 8 | feat | extension | display now-playing track in popup UI |
+| # | Type | Scope | Description | Статус |
+|---|------|-------|-------------|--------|
+| 1 | docs | plans | add AC6 music capture plan | ✅ |
+| 2 | feat | extension | add TrackInfo types and music message definitions | ✅ |
+| 3 | feat | extension | add YouTube Music content script with MutationObserver | ✅ |
+| 4 | feat | extension | add SoundCloud content script with MutationObserver | ✅ |
+| 5 | feat | extension | update manifest with music content scripts and host_permissions | ✅ |
+| 6 | feat | extension | handle TRACK_CAPTURED in background and save to DB | ✅ |
+| 7 | feat | dashboard | add POST /api/v1/tracks route handler | ✅ |
+| 8 | feat | extension | display now-playing track in popup UI | ✅ |
+| 9 | fix | extension | skip sync flush when unauthenticated to stop retry flood | ✅ |
+| 10 | fix | extension | fix track section visibility and show auth error in popup | ✅ |
+| 11 | fix | extension | add TRACK_REQUEST on-demand pull to fix SW race condition | ✅ |
+| 12 | docs | — | add local dev checklist to CLAUDE.md | ✅ |
+| 13 | fix | extension | save track to DB on on-demand TRACK_REQUEST pull | ✅ |
+| 14 | feat | extension | show track listening duration timer in popup | ✅ |
+
+## Виявлені баги під час тестування та їх рішення
+
+| Баг | Причина | Рішення |
+|-----|---------|---------|
+| ERR_CONNECTION_REFUSED на auth | Dashboard не запущений / Docker не стартував | Документовано в CLAUDE.md |
+| Retry flood при відсутності JWT | sync alarm кожні 30 сек навіть без auth | `checkAuth()` guard у `flush()` |
+| `♪ —` завжди видима | CSS `.popup__track { display:flex }` перекриває `[hidden]` | `style.display` через JS |
+| Трек не відображається після reload | SW race: content script надіслав до SW при inactive SW | `TRACK_REQUEST` on-demand pull via `chrome.tabs.sendMessage` |
+| `chrome.tabs.query({ active, currentWindow })` повертає не YTM | SW не має "current window" | Пошук по URL: `{ url: "https://music.youtube.com/*" }` |
+| On-demand pull не зберігав у БД | `queryActiveTabForTrack` тільки писав у storage | Додано `saveTrackToDb` у on-demand flow |
