@@ -195,7 +195,7 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
 
 // ─── Music: save / end track in DB ────────────────────────────────────────────
 
-// Saves a new track to DB and stores its id for later endedAt update.
+// Saves a new track to DB and stores its id + period start for listenedMs accumulation.
 // Best-effort — errors are logged but never surface to the user.
 async function saveTrackToDb(track: TrackInfo, dbSessionId: string): Promise<void> {
   try {
@@ -205,27 +205,32 @@ async function saveTrackToDb(track: TrackInfo, dbSessionId: string): Promise<voi
     });
     if (!res.ok) return;
     const { id } = await res.json() as { id: string };
-    await chrome.storage.local.set({ currentDbTrackId: id });
+    // Store id and the moment this listening period started (for listenedMs delta)
+    await chrome.storage.local.set({ currentDbTrackId: id, currentPeriodStartMs: Date.now() });
   } catch (err) {
     console.warn("[worktrace] track save failed:", err);
   }
 }
 
-// Closes the previous DB track record with endedAt = now.
+// Closes the previous DB track record: sends endedAt + listenedMs delta.
 async function endCurrentDbTrack(): Promise<void> {
-  const r = await chrome.storage.local.get("currentDbTrackId");
-  const id = r["currentDbTrackId"] as string | undefined;
+  const r = await chrome.storage.local.get(["currentDbTrackId", "currentPeriodStartMs"]);
+  const id          = r["currentDbTrackId"]    as string | undefined;
+  const periodStart = r["currentPeriodStartMs"] as number | undefined;
   if (!id) return;
+
+  const now        = Date.now();
+  const listenedMs = periodStart ? Math.max(0, now - periodStart) : 0;
 
   try {
     await apiFetch(`/api/v1/tracks/${id}`, {
       method: "PATCH",
-      body:   JSON.stringify({ endedAt: new Date().toISOString() }),
+      body:   JSON.stringify({ endedAt: new Date(now).toISOString(), listenedMs }),
     });
   } catch (err) {
     console.warn("[worktrace] track end failed:", err);
   } finally {
-    await chrome.storage.local.remove("currentDbTrackId");
+    await chrome.storage.local.remove(["currentDbTrackId", "currentPeriodStartMs"]);
   }
 }
 
@@ -369,7 +374,10 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === "SESSION_PAUSE") {
-      pauseSession()
+      (async () => {
+        await endCurrentDbTrack(); // record listenedMs up to pause point
+        return pauseSession();
+      })()
         .then((session) =>
           sendResponse({
             success: true,
@@ -387,12 +395,18 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "SESSION_RESUME") {
       resumeSession()
-        .then((session) =>
+        .then(async (session) => {
           sendResponse({
             success: true,
             session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
-          }),
-        )
+          });
+          // Re-open a DB track record for the currently playing song (if any)
+          if (session?.dbSessionId) {
+            const r = await chrome.storage.local.get("currentTrack");
+            const track = r["currentTrack"] as TrackInfo | undefined;
+            if (track) void saveTrackToDb(track, session.dbSessionId);
+          }
+        })
         .catch((err: unknown) =>
           sendResponse({
             success: false,

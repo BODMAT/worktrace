@@ -14,6 +14,15 @@
 - [x] Поточний трек відображається в popup
 - [x] При активній сесії трек зберігається в DB (модель `Track` вже існує в schema)
 
+## Додаткові вимоги (виявлені під час тестування)
+
+- [x] При **паузі** сесії — зупиняти лічильник тривалості треку + відправляти `endedAt` в БД
+- [x] При **відновленні** сесії — відкривати новий DB-запис для поточного треку (акумуляція `listenedMs`)
+- [x] Якщо пісня вже є в сесії в БД — **акумулювати `listenedMs`** через upsert (не дублювати запис)
+- [x] `endedAt` встановлюється одразу при зміні/закінченні треку
+- [x] Музика зберігається в БД **тільки під час активного таймера** (не під час паузи)
+- [x] Коли таймер неактивний (пауза/idle) — **підсвічувати блок музики сірим** в popup
+
 ---
 
 ## Архітектурні рішення
@@ -53,7 +62,7 @@ ytm.ts / soundcloud.ts
           ↓
       background/index.ts
           ├── chrome.storage.local.set({ currentTrack })
-          └── якщо сесія активна → POST /api/v1/tracks
+          └── якщо сесія активна → POST /api/v1/tracks (upsert)
                   ↓ (fail → best-effort, не ламає flow)
       
 popup.ts
@@ -100,22 +109,32 @@ z.object({
 ```
 `capturedAt` — `@default(now())` в Prisma, не передаємо з клієнта.
 
-### 7. Popup UI — секція "NOW PLAYING"
+### 7. `PATCH /api/v1/tracks/:id` — endedAt + listenedMs
 
-Додаємо між sync-indicator та notes:
-```html
-<div class="popup__track" id="track-section" hidden>
-  <span class="popup__track-icon">♪</span>
-  <div class="popup__track-info">
-    <span class="popup__track-title" id="track-title">—</span>
-    <span class="popup__track-artist" id="track-artist"></span>
-  </div>
-  <span class="popup__track-source" id="track-source"></span>
-</div>
+```ts
+z.object({
+  endedAt:    z.string().datetime(),
+  listenedMs: z.number().int().min(0),
+})
 ```
 
-Оновлюється кожен тік polling-у (1s) через `TRACK_GET_CURRENT`.  
-Якщо трек відсутній — секція прихована (`hidden`).
+Накопичувальне: `prisma.track.update({ data: { endedAt, listenedMs: { increment: delta } } })`.
+
+### 8. Upsert замість create
+
+`POST /api/v1/tracks` → `prisma.track.upsert` по `@@unique([sessionId, artist, title])`.  
+При повторному запуску тої самої пісні в сесії — запис оновлюється (endedAt: null), `listenedMs` акумулюється через наступний PATCH.
+
+### 9. Облік `listenedMs` — `currentPeriodStartMs`
+
+Background зберігає `currentPeriodStartMs = Date.now()` при POST.  
+При PATCH (`endCurrentDbTrack`) — обчислює `listenedMs = Date.now() - currentPeriodStartMs`.
+
+### 10. Popup UI — секція "NOW PLAYING"
+
+- HTML: секція `#track-section` з `♪` іконкою, title, artist, source badge, duration
+- CSS: `.popup__track--inactive { opacity: 0.35 }` — сіра підсвітка коли таймер неактивний
+- TS: `displayDurationMs` — локальний лічильник, інкрементується лише при `isSessionActive = true`
 
 ---
 
@@ -127,13 +146,17 @@ z.object({
 | `extension/src/content/ytm.ts` | **NEW** — YouTube Music content script |
 | `extension/src/content/soundcloud.ts` | **NEW** — SoundCloud content script |
 | `extension/src/manifest.ts` | **EDIT** — додати content_scripts + host_permissions |
-| `extension/src/background/index.ts` | **EDIT** — handle TRACK_CAPTURED, TRACK_GET_CURRENT |
+| `extension/src/background/index.ts` | **EDIT** — handle TRACK_CAPTURED, TRACK_GET_CURRENT, pause/resume |
 | `extension/src/popup/index.html` | **EDIT** — секція NOW PLAYING |
-| `extension/src/popup/popup.ts` | **EDIT** — sendMusic helper + poll track + відображення |
-| `extension/src/popup/popup.css` | **EDIT** — стилі .popup__track |
+| `extension/src/popup/popup.ts` | **EDIT** — sendMusic, track timer, gray-out state |
+| `extension/src/popup/popup.css` | **EDIT** — стилі .popup__track, .popup__track--inactive |
+| `dashboard/prisma/schema.prisma` | **EDIT** — listenedMs field + @@unique constraint |
+| `dashboard/prisma/migrations/...` | **NEW** — migration for listenedMs + unique |
 | `dashboard/app/api/v1/tracks/route.ts` | **NEW** — POST /api/v1/tracks |
-| `dashboard/server/tracks.ts` | **NEW** — createTrack бізнес-логіка |
+| `dashboard/app/api/v1/tracks/[id]/route.ts` | **NEW** — PATCH /api/v1/tracks/:id |
+| `dashboard/server/tracks.ts` | **NEW** — createTrack (upsert), endTrack (increment) |
 | `dashboard/server/schemas/tracks.ts` | **NEW** — Zod schema для Track |
+| `dashboard/server/cors.ts` | **EDIT** — додати PATCH до Allow-Methods |
 
 ---
 
@@ -143,132 +166,86 @@ z.object({
 ```
 docs(plans): add AC6 music capture plan
 ```
-Файл: `plans/week2/AC6-music-capture.md`
-
----
 
 ### Коміт 2 — Types
 ```
 feat(extension): add TrackInfo types and music message definitions
 ```
-**Файл:** `extension/src/types/music.ts`
-
-Визначаємо:
-- `TrackInfo` — основний тип з `title`, `artist`, `source`, `capturedAt`
-- `MusicMessage` — discriminated union: `TRACK_CAPTURED | TRACK_GET_CURRENT`
-- `MusicResponse` — відповідь background на `TRACK_GET_CURRENT`
-
----
 
 ### Коміт 3 — YouTube Music content script
 ```
 feat(extension): add YouTube Music content script with MutationObserver
 ```
-**Файл:** `extension/src/content/ytm.ts`
-
-Логіка:
-1. `parseYTMTrack(): TrackInfo | null` — читає DOM-селектори, fallback на `document.title`
-2. `sendIfChanged(track)` — дедуплікація, відправляє `TRACK_CAPTURED` тільки при зміні
-3. `MutationObserver` на `<title>` і `ytmusic-player-bar` — викликає `sendIfChanged`
-4. Початкова відправка при завантаженні сторінки
-
----
 
 ### Коміт 4 — SoundCloud content script
 ```
 feat(extension): add SoundCloud content script with MutationObserver
 ```
-**Файл:** `extension/src/content/soundcloud.ts`
-
-Аналогічна структура до ytm.ts, але:
-- Селектори `.playbackSoundBadge__titleLink`, `.playbackSoundBadge__lightLink`
-- Fallback: `document.title` regex: `/^(.+?) by (.+?) \| (?:Free|Stream|Listen)/`
-- `MutationObserver` на `.playbackSoundBadge` та `<title>`
-
----
 
 ### Коміт 5 — Manifest update
 ```
 feat(extension): update manifest with music content scripts and host_permissions
 ```
-**Файл:** `extension/src/manifest.ts`
-
-Зміни:
-```ts
-content_scripts: [
-  // існуючий <all_urls>
-  {
-    matches: ["https://music.youtube.com/*"],
-    js: ["src/content/ytm.ts"],
-    run_at: "document_idle",
-  },
-  {
-    matches: ["https://soundcloud.com/*"],
-    js: ["src/content/soundcloud.ts"],
-    run_at: "document_idle",
-  },
-],
-host_permissions: [
-  // існуючі
-  "https://music.youtube.com/*",
-  "https://soundcloud.com/*",
-],
-```
-
----
 
 ### Коміт 6 — Background: handle music messages + save to DB
 ```
 feat(extension): handle TRACK_CAPTURED in background and save to DB
 ```
-**Файли:** `extension/src/background/index.ts`
-
-Додаємо в `onMessage.addListener`:
-
-```ts
-if (message.type === "TRACK_CAPTURED") {
-  await chrome.storage.local.set({ currentTrack: message.payload });
-  // Best-effort save to DB if session is active
-  const session = await getSession();
-  if (session && !session.pausedAt) {
-    void saveTrackToDb(message.payload, session.dbSessionId);
-  }
-  return false;
-}
-
-if (message.type === "TRACK_GET_CURRENT") {
-  const { currentTrack } = await chrome.storage.local.get("currentTrack");
-  sendResponse({ success: true, track: currentTrack ?? null });
-  return true;
-}
-```
-
-`saveTrackToDb` — приватна функція, викликає `apiFetch("/api/v1/tracks", ...)`. Помилки ігноруються (best-effort).
-
----
 
 ### Коміт 7 — Dashboard: POST /api/v1/tracks
 ```
 feat(dashboard): add POST /api/v1/tracks route handler
 ```
-**Файли:**
-- `dashboard/server/schemas/tracks.ts`
-- `dashboard/server/tracks.ts`
-- `dashboard/app/api/v1/tracks/route.ts`
-
-Реалізуємо тонкий Route Handler. Body: `{ sessionId, artist, title }`. Auth через `verifyJwt` з `server/jwt.ts`. Validation via Zod. Запис через `server/tracks.ts → db.track.create(...)`.
-
----
 
 ### Коміт 8 — Popup: now-playing UI
 ```
 feat(extension): display now-playing track in popup UI
 ```
-**Файли:** `popup/index.html`, `popup/popup.ts`, `popup/popup.css`
 
-- HTML: секція `#track-section` з `♪` іконкою, title, artist, source badge
-- CSS: `.popup__track` у стилі існуючого `.popup__sync` — той самий `var(--c-surface)` + border. Source badge: `YTM` у cyan, `SC` у помаранчевому (`#ff5500`)
-- TS: `sendMusic` helper, `refreshTrack()` функція, виклик у `startPolling` тік
+### Коміт 9 — fix: skip sync when unauth
+```
+fix(extension): skip sync flush when unauthenticated to stop retry flood
+```
+
+### Коміт 10 — fix: popup visibility + auth error
+```
+fix(extension): fix track section visibility and show auth error in popup
+```
+
+### Коміт 11 — fix: on-demand pull
+```
+fix(extension): add TRACK_REQUEST on-demand pull to fix SW race condition
+```
+
+### Коміт 12 — docs: dev checklist
+```
+docs: add local dev checklist to CLAUDE.md
+```
+
+### Коміт 13 — fix: save on-demand pull to DB
+```
+fix(extension): save track to DB on on-demand TRACK_REQUEST pull
+```
+
+### Коміт 14 — feat: duration timer
+```
+feat(extension): show track listening duration timer in popup
+```
+
+### Коміт 15 — feat: listenedMs accumulation + pause/resume + gray-out
+```
+feat: accumulate listenedMs per track, pause timer, gray out music block
+```
+
+Зміни:
+- `dashboard/prisma/schema.prisma` — `listenedMs Int @default(0)` + `@@unique([sessionId, artist, title])`
+- `dashboard/prisma/migrations/...` — нова міграція
+- `dashboard/server/schemas/tracks.ts` — `UpdateTrackInput` додає `listenedMs`
+- `dashboard/server/tracks.ts` — `createTrackForUser` → upsert; `endTrackForUser` → `listenedMs: { increment }`
+- `dashboard/server/cors.ts` — `PATCH` в `Allow-Methods`
+- `extension/src/background/index.ts` — `currentPeriodStartMs`, `SESSION_PAUSE` → `endCurrentDbTrack`, `SESSION_RESUME` → `saveTrackToDb`
+- `extension/src/popup/popup.ts` — `isSessionActive`, `displayDurationMs`, gray-out toggle
+- `extension/src/popup/popup.css` — `.popup__track--inactive`
 
 ---
 
@@ -281,6 +258,8 @@ feat(extension): display now-playing track in popup UI
 | Content script injection race (page not loaded) | `run_at: "document_idle"` + initial send при завантаженні |
 | DB save failing silently | Best-effort: помилки логуються в console, не ламають UX |
 | MutationObserver spam | Дедуплікація за `title+artist` в `previousTrack` |
+| Подвійні записи для тої самої пісні | `@@unique([sessionId, artist, title])` + upsert в Prisma |
+| listenedMs не рахується при паузі | `currentPeriodStartMs` reset on pause, re-save on resume |
 
 ---
 
@@ -292,7 +271,7 @@ feat(extension): display now-playing track in popup UI
 
 ---
 
-## Кількість комітів: 14 (8 план + 4 фікси під час тестування + 2 доповнення)
+## Кількість комітів: 15 (8 план + 4 фікси під час тестування + 2 доповнення + 1 складний фіча-коміт)
 
 | # | Type | Scope | Description | Статус |
 |---|------|-------|-------------|--------|
@@ -310,6 +289,7 @@ feat(extension): display now-playing track in popup UI
 | 12 | docs | — | add local dev checklist to CLAUDE.md | ✅ |
 | 13 | fix | extension | save track to DB on on-demand TRACK_REQUEST pull | ✅ |
 | 14 | feat | extension | show track listening duration timer in popup | ✅ |
+| 15 | feat | — | accumulate listenedMs per track, pause timer, gray out music block | ⏳ |
 
 ## Виявлені баги під час тестування та їх рішення
 
@@ -321,3 +301,5 @@ feat(extension): display now-playing track in popup UI
 | Трек не відображається після reload | SW race: content script надіслав до SW при inactive SW | `TRACK_REQUEST` on-demand pull via `chrome.tabs.sendMessage` |
 | `chrome.tabs.query({ active, currentWindow })` повертає не YTM | SW не має "current window" | Пошук по URL: `{ url: "https://music.youtube.com/*" }` |
 | On-demand pull не зберігав у БД | `queryActiveTabForTrack` тільки писав у storage | Додано `saveTrackToDb` у on-demand flow |
+| PATCH повертає CORS error | `cors.ts` мав тільки GET/POST/OPTIONS | Додано PATCH до `Access-Control-Allow-Methods` |
+| listenedMs рахується під час паузи | Timer tick не знав про стан сесії | `isSessionActive` flag у popup, `endCurrentDbTrack` при паузі |

@@ -10,9 +10,10 @@ export const CreateTrackInput = z.object({
 
 export type CreateTrackInput = z.infer<typeof CreateTrackInput>;
 
-// PATCH — only endedAt can be updated after creation
+// PATCH — endedAt and accumulated listening time
 export const UpdateTrackInput = z.object({
-  endedAt: z.string().datetime(),
+  endedAt:    z.string().datetime(),
+  listenedMs: z.number().int().min(0),
 });
 
 export type UpdateTrackInput = z.infer<typeof UpdateTrackInput>;

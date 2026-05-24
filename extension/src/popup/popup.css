@@ -282,6 +282,12 @@ body {
   border-color: color-mix(in srgb, #ff5500 40%, transparent);
 }
 
+/* Gray-out music block when session is not actively running */
+.popup__track--inactive {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* ── popup__notes ──────────────────────────────────────────────────────────── */
 .popup__notes {
   display: flex;

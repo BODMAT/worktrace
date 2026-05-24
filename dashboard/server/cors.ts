@@ -6,7 +6,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
   const allow = origin && ALLOWED_ORIGIN_PATTERN.test(origin) ? origin : "null";
   return {
     "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     Vary: "Origin",
   };

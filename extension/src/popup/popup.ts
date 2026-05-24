@@ -84,7 +84,11 @@ function formatMs(ms: number): string {
 
 type UIState = "idle" | "active" | "paused";
 
+let isSessionActive = false; // true only when state === "active"
+
 function applyState(state: UIState, elapsedMs = 0): void {
+  isSessionActive = state === "active";
+
   timerEl.textContent = state === "idle" ? "00:00:00" : formatMs(elapsedMs);
 
   timerEl.className     = `popup__time popup__time--${state}`;
@@ -97,6 +101,9 @@ function applyState(state: UIState, elapsedMs = 0): void {
   btnStop.disabled  = state === "idle";
   btnPause.textContent = state === "paused" ? "▶ RESUME" : "⏸ PAUSE";
   btnNote.disabled  = state !== "active";
+
+  // Gray out the music block when session is not actively running
+  trackSection.classList.toggle("popup__track--inactive", !isSessionActive);
 }
 
 function showAuthenticated(email: string | null): void {
@@ -151,15 +158,28 @@ async function refreshSyncIndicator(): Promise<void> {
 // ─── Now Playing ──────────────────────────────────────────────────────────────
 
 let activeTrack: TrackInfo | null = null;
+// Accumulated display duration in ms — only increments while session is active.
+// Reset to 0 on track change; initialised from capturedAt on first popup load.
+let displayDurationMs = 0;
 
-function formatTrackDuration(capturedAt: string): string {
-  const sec = Math.floor((Date.now() - new Date(capturedAt).getTime()) / 1000);
-  const m   = Math.floor(sec / 60);
-  const s   = sec % 60;
+function formatTrackDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
   return `${String(m)}:${String(s).padStart(2, "0")}`;
 }
 
 function applyTrack(track: TrackInfo | null): void {
+  const prevKey = activeTrack ? `${activeTrack.title}::${activeTrack.artist}` : null;
+  const newKey  = track       ? `${track.title}::${track.artist}`             : null;
+
+  // Reset duration counter only when the track actually changes
+  if (newKey !== prevKey) {
+    displayDurationMs = track
+      ? Math.max(0, Date.now() - new Date(track.capturedAt).getTime())
+      : 0;
+  }
+
   activeTrack = track;
 
   if (!track) {
@@ -170,7 +190,7 @@ function applyTrack(track: TrackInfo | null): void {
   trackSection.style.display = "flex";
   trackTitle.textContent    = track.title;
   trackArtist.textContent   = track.artist;
-  trackDuration.textContent = formatTrackDuration(track.capturedAt);
+  trackDuration.textContent = formatTrackDuration(displayDurationMs);
 
   const isYTM = track.source === "youtube-music";
   trackSource.textContent = isYTM ? "YTM" : "SC";
@@ -178,7 +198,10 @@ function applyTrack(track: TrackInfo | null): void {
 }
 
 function refreshDuration(): void {
-  if (activeTrack) trackDuration.textContent = formatTrackDuration(activeTrack.capturedAt);
+  if (!activeTrack) return;
+  // Only count time while the session is actively running
+  if (isSessionActive) displayDurationMs += 1000;
+  trackDuration.textContent = formatTrackDuration(displayDurationMs);
 }
 
 async function refreshTrack(): Promise<void> {

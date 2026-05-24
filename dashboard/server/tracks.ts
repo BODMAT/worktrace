@@ -26,11 +26,24 @@ export async function createTrackForUser(
   });
   if (!session) throw new SessionNotFoundError();
 
-  return prisma.track.create({
-    data: {
+  // Upsert by [sessionId, artist, title] — same song in same session
+  // gets a single record; capturedAt stays from first detection.
+  return prisma.track.upsert({
+    where: {
+      sessionId_artist_title: {
+        sessionId: input.sessionId,
+        artist:    input.artist,
+        title:     input.title,
+      },
+    },
+    create: {
       sessionId: input.sessionId,
       artist:    input.artist,
       title:     input.title,
+    },
+    update: {
+      // Reset endedAt on re-play so the record stays "open"
+      endedAt: null,
     },
   });
 }
@@ -49,6 +62,9 @@ export async function endTrackForUser(
 
   return prisma.track.update({
     where: { id: trackId },
-    data:  { endedAt: new Date(input.endedAt) },
+    data:  {
+      endedAt:    new Date(input.endedAt),
+      listenedMs: { increment: input.listenedMs },
+    },
   });
 }
