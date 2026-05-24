@@ -176,7 +176,14 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
 
   try {
     const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
-    if (track) await chrome.storage.local.set({ currentTrack: track });
+    if (track) {
+      await chrome.storage.local.set({ currentTrack: track });
+      // Save to DB if session is active (same as TRACK_CAPTURED flow)
+      const session = await getSession();
+      if (session && session.pausedAt === null && session.dbSessionId) {
+        void saveTrackToDb(track, session.dbSessionId);
+      }
+    }
     return track;
   } catch {
     return null;
