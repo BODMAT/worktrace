@@ -1,5 +1,6 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { ContentMessage } from "../types/content";
+import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
 import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
@@ -154,6 +155,24 @@ async function tryEndDbSession(dbSessionId: string): Promise<void> {
   }
 }
 
+// ─── Music: save track to DB ───────────────────────────────────────────────────
+
+// Best-effort — errors are logged but never surface to the user
+async function saveTrackToDb(track: TrackInfo, dbSessionId: string): Promise<void> {
+  try {
+    await apiFetch("/api/v1/tracks", {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId: dbSessionId,
+        artist:    track.artist,
+        title:     track.title,
+      }),
+    });
+  } catch (err) {
+    console.warn("[worktrace] track save failed:", err);
+  }
+}
+
 // ─── Pending event queue ───────────────────────────────────────────────────────
 
 async function enqueuePending(event: PendingEvent): Promise<void> {
@@ -165,13 +184,13 @@ async function enqueuePending(event: PendingEvent): Promise<void> {
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage;
+type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage;
 
 chrome.runtime.onMessage.addListener(
   (
     message: IncomingMessage,
     _sender,
-    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse) => void,
+    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse) => void,
   ) => {
     if (message.type === "AUTH_LOGIN") {
       if (DEV_MODE) {
@@ -354,6 +373,35 @@ chrome.runtime.onMessage.addListener(
           }),
         );
       return true;
+    }
+
+    // ─── Music messages ──────────────────────────────────────────────────────
+
+    if (message.type === "TRACK_CAPTURED") {
+      const track = message.payload;
+      void chrome.storage.local.set({ currentTrack: track });
+
+      // Best-effort: save to DB only while session is active
+      getSession().then((session) => {
+        if (session && session.pausedAt === null && session.dbSessionId) {
+          void saveTrackToDb(track, session.dbSessionId);
+        }
+      });
+
+      return false; // no async response
+    }
+
+    if (message.type === "TRACK_GET_CURRENT") {
+      chrome.storage.local.get("currentTrack").then((r) => {
+        const track = (r["currentTrack"] as TrackInfo | undefined) ?? null;
+        sendResponse({ success: true, track });
+      }).catch((err: unknown) =>
+        sendResponse({
+          success: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+        }),
+      );
+      return true; // async response
     }
 
     // ─── Content script messages ─────────────────────────────────────────────
