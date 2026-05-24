@@ -271,7 +271,7 @@ feat: accumulate listenedMs per track, pause timer, gray out music block
 
 ---
 
-## Кількість комітів: 15 (8 план + 4 фікси під час тестування + 2 доповнення + 1 складний фіча-коміт)
+## Кількість комітів: 16 (8 план + 4 фікси під час тестування + 2 доповнення + 1 складний фіча-коміт + 1 bugfix пауза YTM)
 
 | # | Type | Scope | Description | Статус |
 |---|------|-------|-------------|--------|
@@ -289,7 +289,8 @@ feat: accumulate listenedMs per track, pause timer, gray out music block
 | 12 | docs | — | add local dev checklist to CLAUDE.md | ✅ |
 | 13 | fix | extension | save track to DB on on-demand TRACK_REQUEST pull | ✅ |
 | 14 | feat | extension | show track listening duration timer in popup | ✅ |
-| 15 | feat | — | accumulate listenedMs per track, pause timer, gray out music block | ⏳ |
+| 15 | feat | — | accumulate listenedMs per track, pause timer, gray out music block | ✅ |
+| 16 | fix | extension | detect music pause via .time-info DOM polling on YTM | ✅ |
 
 ## Виявлені баги під час тестування та їх рішення
 
@@ -303,3 +304,4 @@ feat: accumulate listenedMs per track, pause timer, gray out music block
 | On-demand pull не зберігав у БД | `queryActiveTabForTrack` тільки писав у storage | Додано `saveTrackToDb` у on-demand flow |
 | PATCH повертає CORS error | `cors.ts` мав тільки GET/POST/OPTIONS | Додано PATCH до `Access-Control-Allow-Methods` |
 | listenedMs рахується під час паузи | Timer tick не знав про стан сесії | `isSessionActive` flag у popup, `endCurrentDbTrack` при паузі |
+| Таймер пісні не зупинявся на паузі YTM | `tp-yt-paper-slider aria-valuenow` повертав статичне значення | Перейшли на `ytmusic-player-bar .time-info` textContent, порівнюємо consecutive значення |
