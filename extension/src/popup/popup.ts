@@ -151,11 +151,11 @@ async function refreshSyncIndicator(): Promise<void> {
 
 function applyTrack(track: TrackInfo | null): void {
   if (!track) {
-    trackSection.hidden = true;
+    trackSection.style.display = "none";
     return;
   }
 
-  trackSection.hidden = false;
+  trackSection.style.display = "flex";
   trackTitle.textContent  = track.title;
   trackArtist.textContent = track.artist;
 
@@ -227,12 +227,19 @@ async function init(): Promise<void> {
 btnLogin.addEventListener("click", async () => {
   btnLogin.disabled = true;
   btnLogin.textContent = "Signing in...";
-  const res = await sendAuth({ type: "AUTH_LOGIN" }).catch(() => null);
+  const res = await sendAuth({ type: "AUTH_LOGIN" }).catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return { success: false as const, error: msg };
+  });
   if (res?.success) {
     await init();
   } else {
     btnLogin.disabled = false;
-    btnLogin.textContent = "Sign in with Google";
+    const errMsg = "error" in res && res.error ? res.error : "Sign-in failed";
+    // Trim long error to keep the button readable; full error is in SW inspector
+    const short = errMsg.length > 40 ? `${errMsg.slice(0, 40)}…` : errMsg;
+    btnLogin.textContent = `⚠ ${short}`;
+    setTimeout(() => { btnLogin.textContent = "Sign in with Google"; }, 4000);
   }
 });
 
