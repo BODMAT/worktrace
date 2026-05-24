@@ -94,6 +94,19 @@ function observeChanges(): void {
   }
 }
 
+// ─── On-demand request from background ────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener(
+  (msg: unknown, _sender, sendResponse: (track: TrackInfo | null) => void) => {
+    const type = (msg as Record<string, unknown> | null)?.["type"];
+    if (type === "TRACK_REQUEST") {
+      sendResponse(parseTrack());
+      return false;
+    }
+    return false;
+  },
+);
+
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 
 sendIfChanged(parseTrack());

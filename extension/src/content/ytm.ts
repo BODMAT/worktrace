@@ -2,33 +2,58 @@ import type { TrackInfo, MusicMessage } from "../types/music";
 
 // ─── DOM parsing ───────────────────────────────────────────────────────────────
 
+/** Try a list of CSS selectors in order and return the first non-empty text match. */
+function firstText(...selectors: string[]): string {
+  for (const sel of selectors) {
+    const text = document.querySelector<HTMLElement>(sel)?.textContent?.trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 /**
- * Attempt to read the current track directly from the YTM player bar DOM.
- * Falls back to parsing document.title if the player bar is not rendered yet.
+ * Read the current track from the YTM player bar.
+ * Tries several selector strategies; falls back to document.title for the song title only
+ * (YTM does NOT put the artist in the tab title).
  */
 function parseTrack(): TrackInfo | null {
-  // Primary: player-bar DOM elements (present while a track is loaded)
-  const titleEl  = document.querySelector<HTMLElement>("ytmusic-player-bar .title.ytmusic-player-bar");
-  const artistEl = document.querySelector<HTMLElement>(
-    "ytmusic-player-bar .subtitle.ytmusic-player-bar a:first-child",
+  // ── Title — try multiple selectors ──────────────────────────────────────────
+  const title = firstText(
+    // Most reliable: yt-formatted-string with class "title" inside the player bar
+    "ytmusic-player-bar yt-formatted-string.title",
+    // Alternate: element has both classes "title" and "ytmusic-player-bar"
+    "ytmusic-player-bar .title.ytmusic-player-bar",
+    // Broad fallback
+    "ytmusic-player-bar .title",
   );
 
-  const titleDOM  = titleEl?.textContent?.trim()  ?? "";
-  const artistDOM = artistEl?.textContent?.trim() ?? "";
+  // ── Artist — try multiple selectors ─────────────────────────────────────────
+  const artist = firstText(
+    // byline contains artist link(s); first <a> is the primary artist
+    "ytmusic-player-bar yt-formatted-string.byline a:first-child",
+    "ytmusic-player-bar .byline.ytmusic-player-bar a:first-child",
+    "ytmusic-player-bar .subtitle.ytmusic-player-bar a:first-child",
+    // Fallback: grab entire byline text (may include featuring artists)
+    "ytmusic-player-bar yt-formatted-string.byline",
+    "ytmusic-player-bar .byline",
+    "ytmusic-player-bar .subtitle",
+  );
 
-  if (titleDOM && artistDOM) {
-    return { title: titleDOM, artist: artistDOM, source: "youtube-music", capturedAt: new Date().toISOString() };
+  if (title && artist) {
+    return { title, artist, source: "youtube-music", capturedAt: new Date().toISOString() };
   }
 
-  // Fallback: document.title — format: "Title - Artist - YouTube Music"
-  const match = /^(.+?) - (.+?) - YouTube Music$/.exec(document.title);
-  if (match) {
-    const [, title, artist] = match;
-    if (title && artist) {
-      return { title, artist, source: "youtube-music", capturedAt: new Date().toISOString() };
-    }
+  // ── document.title fallback — title only ────────────────────────────────────
+  // YTM formats: "Song Title - YouTube Music" or "Song Title · YouTube Music"
+  const titleFromDoc = document.title
+    .replace(/\s*[-·]\s*YouTube Music\s*$/i, "")
+    .trim();
+
+  if (titleFromDoc && titleFromDoc !== "YouTube Music" && artist) {
+    return { title: titleFromDoc, artist, source: "youtube-music", capturedAt: new Date().toISOString() };
   }
 
+  // Can't determine both title AND artist — skip
   return null;
 }
 
@@ -52,7 +77,7 @@ function sendIfChanged(track: TrackInfo | null): void {
 // ─── MutationObserver ─────────────────────────────────────────────────────────
 
 function observeChanges(): void {
-  // Observe <title> changes — YTM updates it on every track change
+  // Observe <title> — YTM updates it on every track change (most reliable signal)
   const titleNode = document.querySelector("title");
   if (titleNode) {
     new MutationObserver(() => sendIfChanged(parseTrack())).observe(titleNode, {
@@ -62,16 +87,16 @@ function observeChanges(): void {
     });
   }
 
-  // Observe the player bar itself — catches subtitle/artist updates
+  // Observe the player bar itself — catches DOM updates to title/byline elements
   const playerBar = document.querySelector("ytmusic-player-bar");
   if (playerBar) {
     new MutationObserver(() => sendIfChanged(parseTrack())).observe(playerBar, {
-      childList: true,
-      subtree: true,
+      childList:     true,
+      subtree:       true,
       characterData: true,
     });
   } else {
-    // Player bar not rendered yet — watch <body> until it appears
+    // Player bar not rendered yet (SPA cold start) — wait for it
     const bodyObserver = new MutationObserver(() => {
       const bar = document.querySelector("ytmusic-player-bar");
       if (bar) {
@@ -87,6 +112,21 @@ function observeChanges(): void {
     bodyObserver.observe(document.body, { childList: true, subtree: true });
   }
 }
+
+// ─── On-demand request from background ────────────────────────────────────────
+// Background sends TRACK_REQUEST when popup opens and storage has no currentTrack.
+// This recovers from the SW-inactive race condition on page load.
+
+chrome.runtime.onMessage.addListener(
+  (msg: unknown, _sender, sendResponse: (track: TrackInfo | null) => void) => {
+    const type = (msg as Record<string, unknown> | null)?.["type"];
+    if (type === "TRACK_REQUEST") {
+      sendResponse(parseTrack());
+      return false;
+    }
+    return false;
+  },
+);
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 

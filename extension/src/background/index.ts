@@ -155,6 +155,34 @@ async function tryEndDbSession(dbSessionId: string): Promise<void> {
   }
 }
 
+// ─── Music: pull track from active tab ────────────────────────────────────────
+
+// Queries the active YTM or SoundCloud tab directly via content script.
+// Used as fallback when currentTrack is not yet in storage (SW was inactive at
+// the time the content script first ran and the message was dropped).
+async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
+  // Search by URL — more reliable than active/currentWindow from a service worker context
+  const [ytmTabs, scTabs] = await Promise.all([
+    chrome.tabs.query({ url: "https://music.youtube.com/*" }),
+    chrome.tabs.query({ url: "https://soundcloud.com/*" }),
+  ]);
+
+  const candidates = [...ytmTabs, ...scTabs];
+  if (candidates.length === 0) return null;
+
+  // Prefer an active tab; otherwise use the first match
+  const tab = candidates.find((t) => t.active) ?? candidates[0];
+  if (!tab?.id) return null;
+
+  try {
+    const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
+    if (track) await chrome.storage.local.set({ currentTrack: track });
+    return track;
+  } catch {
+    return null;
+  }
+}
+
 // ─── Music: save track to DB ───────────────────────────────────────────────────
 
 // Best-effort — errors are logged but never surface to the user
@@ -392,16 +420,22 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === "TRACK_GET_CURRENT") {
-      chrome.storage.local.get("currentTrack").then((r) => {
-        const track = (r["currentTrack"] as TrackInfo | undefined) ?? null;
+      (async () => {
+        const r     = await chrome.storage.local.get("currentTrack");
+        let   track = (r["currentTrack"] as TrackInfo | undefined) ?? null;
+
+        // Fallback: ask the active music tab directly — handles the SW race
+        // condition where the initial TRACK_CAPTURED message was dropped
+        if (!track) track = await queryActiveTabForTrack();
+
         sendResponse({ success: true, track });
-      }).catch((err: unknown) =>
+      })().catch((err: unknown) =>
         sendResponse({
           success: false,
           error: err instanceof Error ? err.message : "Unknown error",
         }),
       );
-      return true; // async response
+      return true;
     }
 
     // ─── Content script messages ─────────────────────────────────────────────
@@ -435,4 +469,11 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 // Boot sync alarm — runs every service-worker startup, idempotent under chrome.alarms
-initSync({ apiFetch, ensureDbSession });
+initSync({
+  apiFetch,
+  ensureDbSession,
+  checkAuth: async () => {
+    const stored = await getStoredAuth();
+    return stored !== null && !isExpired(stored.jwtExpiresAt);
+  },
+});
