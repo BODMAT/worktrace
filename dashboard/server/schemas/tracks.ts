@@ -9,3 +9,10 @@ export const CreateTrackInput = z.object({
 });
 
 export type CreateTrackInput = z.infer<typeof CreateTrackInput>;
+
+// PATCH — only endedAt can be updated after creation
+export const UpdateTrackInput = z.object({
+  endedAt: z.string().datetime(),
+});
+
+export type UpdateTrackInput = z.infer<typeof UpdateTrackInput>;
