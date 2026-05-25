@@ -1,4 +1,5 @@
 import type { AuthMessage, AuthResponse } from "../types/auth";
+import type { BlocklistMessage, BlocklistResponse } from "../types/blocklist";
 import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
 import type { SessionMessage, SessionResponse, SessionState } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
@@ -45,6 +46,16 @@ function sendMusic(msg: MusicMessage): Promise<MusicResponse> {
   );
 }
 
+function sendBlocklist(msg: BlocklistMessage): Promise<BlocklistResponse> {
+  return new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(msg, (res: BlocklistResponse | undefined) => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      if (!res) return reject(new Error("No response from background"));
+      resolve(res);
+    }),
+  );
+}
+
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
 
 const statusDot    = document.getElementById("status-dot")     as HTMLSpanElement;
@@ -69,6 +80,13 @@ const trackTitle    = document.getElementById("track-title")     as HTMLSpanElem
 const trackArtist   = document.getElementById("track-artist")    as HTMLSpanElement;
 const trackSource   = document.getElementById("track-source")    as HTMLSpanElement;
 const trackDuration = document.getElementById("track-duration")  as HTMLSpanElement;
+
+// ─── Blocklist DOM refs ────────────────────────────────────────────────────────
+const currentDomainEl      = document.getElementById("current-domain")          as HTMLSpanElement;
+const toggleCurrentDomain  = document.getElementById("toggle-current-domain")   as HTMLInputElement;
+const btnAccordion         = document.getElementById("btn-blocklist-accordion")  as HTMLButtonElement;
+const blocklistCountLabel  = document.getElementById("blocklist-count-label")    as HTMLSpanElement;
+const blocklistList        = document.getElementById("blocklist-list")           as HTMLDivElement;
 
 // ─── Timer formatting ──────────────────────────────────────────────────────────
 
@@ -225,6 +243,110 @@ async function refreshTrack(): Promise<void> {
   applyTrack(res.track);
 }
 
+// ─── Blocklist ─────────────────────────────────────────────────────────────────
+
+/** Returns the hostname of the current active tab, or null if unavailable. */
+async function getCurrentHostname(): Promise<string | null> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.url) return null;
+    return new URL(tab.url).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshBlocklist(): Promise<void> {
+  const [res, hostname] = await Promise.all([
+    sendBlocklist({ type: "BLOCKLIST_GET" }).catch(() => null),
+    getCurrentHostname(),
+  ]);
+
+  if (!res || !res.success || !("domains" in res)) return;
+  const { domains } = res;
+
+  // 4а: update current-site toggle
+  const displayHost = hostname ?? "—";
+  currentDomainEl.textContent = displayHost;
+  toggleCurrentDomain.disabled = hostname === null;
+  toggleCurrentDomain.checked =
+    hostname !== null &&
+    domains.some((d) => hostname === d || hostname.endsWith(`.${d}`));
+
+  // 4б: update accordion + list
+  const count = domains.length;
+  if (count === 0) {
+    btnAccordion.hidden = true;
+    blocklistList.hidden = true;
+  } else {
+    btnAccordion.hidden = false;
+    blocklistCountLabel.textContent = `▾ ${String(count)} BLOCKED`;
+  }
+
+  // Re-render list items
+  blocklistList.innerHTML = "";
+  for (const domain of domains) {
+    const item = document.createElement("div");
+    item.className = "popup__blocklist-item";
+
+    const label = document.createElement("span");
+    label.className = "popup__blocklist-item-domain";
+    label.textContent = domain;
+
+    const toggleLabel = document.createElement("label");
+    toggleLabel.className = "popup__toggle";
+    toggleLabel.title = `Unblock ${domain}`;
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = true; // all items in the list are blocked by definition
+    cb.dataset["domain"] = domain;
+
+    const track = document.createElement("span");
+    track.className = "popup__toggle-track";
+
+    toggleLabel.appendChild(cb);
+    toggleLabel.appendChild(track);
+    item.appendChild(label);
+    item.appendChild(toggleLabel);
+    blocklistList.appendChild(item);
+  }
+}
+
+// ─── Blocklist event handlers ──────────────────────────────────────────────────
+
+toggleCurrentDomain.addEventListener("change", async () => {
+  const hostname = await getCurrentHostname();
+  if (!hostname) return;
+  if (toggleCurrentDomain.checked) {
+    await sendBlocklist({ type: "BLOCKLIST_ADD", domain: hostname }).catch(() => null);
+  } else {
+    await sendBlocklist({ type: "BLOCKLIST_REMOVE", domain: hostname }).catch(() => null);
+  }
+  await refreshBlocklist();
+});
+
+btnAccordion.addEventListener("click", () => {
+  blocklistList.hidden = !blocklistList.hidden;
+  const isOpen = !blocklistList.hidden;
+  const count = blocklistList.children.length;
+  blocklistCountLabel.textContent = `${isOpen ? "▴" : "▾"} ${String(count)} BLOCKED`;
+});
+
+// Delegated handler for per-domain toggles inside the list
+blocklistList.addEventListener("change", async (e) => {
+  const target = e.target as HTMLInputElement | null;
+  if (!target || target.type !== "checkbox") return;
+  const domain = target.dataset["domain"];
+  if (!domain) return;
+  // Unchecking = unblock (remove from list); re-checking from the list is impossible
+  // because items disappear when removed, but guard anyway
+  if (!target.checked) {
+    await sendBlocklist({ type: "BLOCKLIST_REMOVE", domain }).catch(() => null);
+    await refreshBlocklist();
+  }
+});
+
 // ─── Session polling ───────────────────────────────────────────────────────────
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -245,6 +367,7 @@ function startPolling(): void {
     await refreshSyncIndicator();
     await refreshTrack();
     refreshDuration(); // update elapsed time without extra round-trip
+    await refreshBlocklist();
   }, 1000);
 }
 
@@ -275,6 +398,7 @@ async function init(): Promise<void> {
 
   await refreshSyncIndicator();
   await refreshTrack();
+  await refreshBlocklist();
   startPolling();
 }
 
