@@ -1,6 +1,7 @@
 import type { AuthMessage, AuthResponse } from "../types/auth";
 import type { BlocklistMessage, BlocklistResponse } from "../types/blocklist";
 import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
+import type { ParsingMode, ParsingModeMessage, ParsingModeResponse } from "../types/parsing";
 import type { SessionMessage, SessionResponse, SessionState } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
 
@@ -56,6 +57,16 @@ function sendBlocklist(msg: BlocklistMessage): Promise<BlocklistResponse> {
   );
 }
 
+function sendParsingMode(msg: ParsingModeMessage): Promise<ParsingModeResponse> {
+  return new Promise((resolve, reject) =>
+    chrome.runtime.sendMessage(msg, (res: ParsingModeResponse | undefined) => {
+      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+      if (!res) return reject(new Error("No response from background"));
+      resolve(res);
+    }),
+  );
+}
+
 // ─── DOM refs ──────────────────────────────────────────────────────────────────
 
 const statusDot    = document.getElementById("status-dot")     as HTMLSpanElement;
@@ -87,6 +98,9 @@ const toggleCurrentDomain  = document.getElementById("toggle-current-domain")   
 const btnAccordion         = document.getElementById("btn-blocklist-accordion")  as HTMLButtonElement;
 const blocklistCountLabel  = document.getElementById("blocklist-count-label")    as HTMLSpanElement;
 const blocklistList        = document.getElementById("blocklist-list")           as HTMLDivElement;
+
+// ─── Parsing mode DOM refs ─────────────────────────────────────────────────────
+const parsingGroup = document.getElementById("parsing-group") as HTMLDivElement;
 
 // ─── Timer formatting ──────────────────────────────────────────────────────────
 
@@ -353,6 +367,32 @@ blocklistList.addEventListener("change", async (e) => {
   }
 });
 
+// ─── Parsing mode ─────────────────────────────────────────────────────────────
+
+async function refreshParsingMode(): Promise<void> {
+  const res = await sendParsingMode({ type: "PARSING_MODE_GET" }).catch(() => null);
+  if (!res || !res.success) return;
+  applyParsingModeUI(res.mode);
+}
+
+function applyParsingModeUI(mode: ParsingMode): void {
+  parsingGroup.querySelectorAll<HTMLButtonElement>(".popup__parsing-btn").forEach((btn) => {
+    btn.classList.toggle("popup__parsing-btn--active", btn.dataset["mode"] === mode);
+  });
+}
+
+parsingGroup.addEventListener("click", async (e) => {
+  const target = e.target as HTMLButtonElement | null;
+  if (!target?.classList.contains("popup__parsing-btn")) return;
+  const mode = target.dataset["mode"] as ParsingMode | undefined;
+  if (!mode) return;
+  // Optimistic UI update — apply immediately before the round-trip
+  applyParsingModeUI(mode);
+  await sendParsingMode({ type: "PARSING_MODE_SET", mode }).catch(() => null);
+  // Confirm from storage (catches any error / mismatch)
+  await refreshParsingMode();
+});
+
 // ─── Session polling ───────────────────────────────────────────────────────────
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -374,6 +414,7 @@ function startPolling(): void {
     await refreshTrack();
     refreshDuration(); // update elapsed time without extra round-trip
     await refreshBlocklist();
+    await refreshParsingMode();
   }, 1000);
 }
 
@@ -405,6 +446,7 @@ async function init(): Promise<void> {
   await refreshSyncIndicator();
   await refreshTrack();
   await refreshBlocklist();
+  await refreshParsingMode();
   startPolling();
 }
 
