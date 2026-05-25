@@ -1,7 +1,7 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { BlocklistMessage, BlocklistResponse } from "../types/blocklist";
-import type { ContentMessage } from "../types/content";
 import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
+import type { ParsingModeMessage, ParsingModeResponse } from "../types/parsing";
 import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
@@ -11,6 +11,7 @@ import {
   removeDomain,
   isDomainBlocked,
 } from "./blocklist";
+import { getParsingMode, setParsingMode } from "./parsing";
 import {
   getSession,
   startSession,
@@ -246,13 +247,18 @@ async function saveTrackToDb(track: TrackInfo, dbSessionId: string): Promise<voi
 
 // Closes the previous DB track record: sends endedAt + listenedMs delta.
 async function endCurrentDbTrack(): Promise<void> {
-  const r = await chrome.storage.local.get(["currentDbTrackId", "currentPeriodStartMs"]);
+  const r = await chrome.storage.local.get(["currentDbTrackId", "currentPeriodStartMs", "trackListenedMs"]);
   const id          = r["currentDbTrackId"]    as string | undefined;
   const periodStart = r["currentPeriodStartMs"] as number | undefined;
   if (!id) return;
 
   const now        = Date.now();
   const listenedMs = periodStart ? Math.max(0, now - periodStart) : 0;
+
+  // Accumulate into trackListenedMs so the popup can restore correct display
+  // duration without jumping when it's reopened after a pause.
+  const prevDisplayMs = (r["trackListenedMs"] as number | undefined) ?? 0;
+  await chrome.storage.local.set({ trackListenedMs: prevDisplayMs + listenedMs });
 
   try {
     await apiFetch(`/api/v1/tracks/${id}`, {
@@ -277,13 +283,13 @@ async function enqueuePending(event: PendingEvent): Promise<void> {
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage | BlocklistMessage;
+type IncomingMessage = AuthMessage | SessionMessage | SyncMessage | MusicMessage | BlocklistMessage | ParsingModeMessage;
 
 chrome.runtime.onMessage.addListener(
   (
     message: IncomingMessage,
     _sender,
-    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse | BlocklistResponse) => void,
+    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse | BlocklistResponse | ParsingModeResponse) => void,
   ) => {
     if (message.type === "AUTH_LOGIN") {
       if (DEV_MODE) {
@@ -372,6 +378,7 @@ chrome.runtime.onMessage.addListener(
             session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
           });
           if (session?.dbSessionId) void tryEndDbSession(session.dbSessionId);
+          void chrome.storage.local.remove(["trackListenedMs", "popupSnapshot"]);
         })
         .catch((err: unknown) =>
           sendResponse({
@@ -500,7 +507,10 @@ chrome.runtime.onMessage.addListener(
 
         // Close the previous track then save the new one
         const session = await getSession();
-        await endCurrentDbTrack(); // no-op if no previous track
+        await endCurrentDbTrack(); // no-op if no previous track; also accumulates trackListenedMs
+        // Reset display accumulators — new track starts fresh
+        await chrome.storage.local.set({ trackListenedMs: 0 });
+        await chrome.storage.local.remove("popupSnapshot");
         if (session && session.pausedAt === null && session.dbSessionId) {
           void saveTrackToDb(track, session.dbSessionId);
         }
@@ -541,32 +551,6 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
-    // ─── Content script messages ─────────────────────────────────────────────
-
-    if (message.type === "PAGE_METADATA") {
-      // Store metadata only when a session is active (AC 5 will batch-send it)
-      // Background-level blocklist check: second line of defence after content script
-      void (async () => {
-        const { url, title, metaDescription, headings } = message.payload;
-        const blocked = await isDomainBlocked(url);
-        if (blocked) return;
-
-        const session = await getSession();
-        if (!session) return;
-
-        const content = [metaDescription, ...headings].filter(Boolean).join(" | ") || null;
-        const event: PendingEvent = {
-          url,
-          title,
-          content,
-          tags: [],
-          timestamp: new Date().toISOString(),
-        };
-        void enqueuePending(event);
-      })();
-      return false; // no async response needed
-    }
-
     // ─── Blocklist messages ──────────────────────────────────────────────────
 
     if (message.type === "BLOCKLIST_GET") {
@@ -596,6 +580,32 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "BLOCKLIST_REMOVE") {
       removeDomain(message.domain)
         .then(() => sendResponse({ success: true }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    // ─── Parsing mode messages ───────────────────────────────────────────────
+
+    if (message.type === "PARSING_MODE_GET") {
+      getParsingMode()
+        .then((mode) => sendResponse({ success: true, mode }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "PARSING_MODE_SET") {
+      setParsingMode(message.mode)
+        .then(() => sendResponse({ success: true, mode: message.mode }))
         .catch((err: unknown) =>
           sendResponse({
             success: false,

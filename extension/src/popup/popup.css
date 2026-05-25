@@ -545,3 +545,46 @@ body {
   text-overflow: ellipsis;
   max-width: 200px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   BLOCK: popup__parsing
+═══════════════════════════════════════════════════════════════════════════════ */
+.popup__parsing {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--c-border);
+  padding-top: 12px;
+}
+
+.popup__parsing-group {
+  display: flex;
+  gap: 4px;
+}
+
+.popup__parsing-btn {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--c-muted);
+  color: var(--c-muted);
+  border-radius: 4px;
+  padding: 5px 0;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.popup__parsing-btn:hover:not(.popup__parsing-btn--active) {
+  border-color: var(--c-text);
+  color: var(--c-text);
+}
+
+.popup__parsing-btn--active {
+  border-color: var(--c-cyan);
+  color: var(--c-cyan);
+  background: color-mix(in srgb, var(--c-cyan) 8%, transparent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--c-cyan) 20%, transparent);
+}
