@@ -1,6 +1,5 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { BlocklistMessage, BlocklistResponse } from "../types/blocklist";
-import type { ContentMessage } from "../types/content";
 import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
 import type { ParsingModeMessage, ParsingModeResponse } from "../types/parsing";
 import type { PendingEvent } from "../types/pending";
@@ -279,7 +278,7 @@ async function enqueuePending(event: PendingEvent): Promise<void> {
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage | BlocklistMessage | ParsingModeMessage;
+type IncomingMessage = AuthMessage | SessionMessage | SyncMessage | MusicMessage | BlocklistMessage | ParsingModeMessage;
 
 chrome.runtime.onMessage.addListener(
   (
@@ -541,32 +540,6 @@ chrome.runtime.onMessage.addListener(
         }),
       );
       return true;
-    }
-
-    // ─── Content script messages ─────────────────────────────────────────────
-
-    if (message.type === "PAGE_METADATA") {
-      // Store metadata only when a session is active (AC 5 will batch-send it)
-      // Background-level blocklist check: second line of defence after content script
-      void (async () => {
-        const { url, title, metaDescription, headings } = message.payload;
-        const blocked = await isDomainBlocked(url);
-        if (blocked) return;
-
-        const session = await getSession();
-        if (!session) return;
-
-        const content = [metaDescription, ...headings].filter(Boolean).join(" | ") || null;
-        const event: PendingEvent = {
-          url,
-          title,
-          content,
-          tags: [],
-          timestamp: new Date().toISOString(),
-        };
-        void enqueuePending(event);
-      })();
-      return false; // no async response needed
     }
 
     // ─── Blocklist messages ──────────────────────────────────────────────────

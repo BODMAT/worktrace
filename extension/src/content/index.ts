@@ -1,4 +1,5 @@
-import type { ContentMessage, PageMetadata } from "../types/content";
+import type { PageMetadata } from "../types/content";
+import type { PendingEvent } from "../types/pending";
 import type { ParsingMode } from "../types/parsing";
 
 /** Music sites always get full parsing regardless of the global mode setting. */
@@ -26,17 +27,25 @@ function parseMetadata(mode: ParsingMode): PageMetadata {
   };
 }
 
-async function sendMetadata(): Promise<void> {
-  // Single storage read — blocklist and parsing mode in one I/O call
-  const r = await chrome.storage.local.get(["blockedDomains", "parsingMode"]);
+async function captureMetadata(): Promise<void> {
+  // Single read — everything needed to decide and act, except pendingEvents
+  const r = await chrome.storage.local.get([
+    "blockedDomains",
+    "parsingMode",
+    "activeSession",
+  ]);
+
+  // Level-1 blocklist filter: blocked domains are never parsed
   const blocklist = (r["blockedDomains"] as string[] | undefined) ?? [];
   const hostname = window.location.hostname;
-
-  // Level-1 blocklist filter: do not parse or send data for blocked domains
   const blocked = blocklist.some(
     (d) => hostname === d || hostname.endsWith(`.${d}`),
   );
   if (blocked) return;
+
+  // No session or paused session → do not collect
+  const session = r["activeSession"] as { pausedAt: number | null } | undefined;
+  if (!session || session.pausedAt !== null) return;
 
   // Music sites always use full mode to preserve album/playlist context
   const globalMode = (r["parsingMode"] as ParsingMode | undefined) ?? "full";
@@ -44,18 +53,31 @@ async function sendMetadata(): Promise<void> {
     ? "full"
     : globalMode;
 
-  const message: ContentMessage = {
-    type: "PAGE_METADATA",
-    payload: parseMetadata(effectiveMode),
+  const meta = parseMetadata(effectiveMode);
+  const content =
+    [meta.metaDescription, ...meta.headings].filter(Boolean).join(" | ") ||
+    null;
+
+  const event: PendingEvent = {
+    url: meta.url,
+    title: meta.title,
+    content,
+    tags: [],
+    timestamp: new Date().toISOString(),
   };
-  chrome.runtime.sendMessage(message).catch(() => {
-    // Service worker may be inactive — silently ignore
-  });
+
+  // Fresh read of pendingEvents right before writing to avoid stale overwrites
+  // when multiple tabs capture simultaneously.
+  // Writing directly to storage bypasses the service worker entirely —
+  // events are never dropped due to SW sleep (MV3 limitation).
+  const fresh = await chrome.storage.local.get("pendingEvents");
+  const pending = (fresh["pendingEvents"] as PendingEvent[] | undefined) ?? [];
+  await chrome.storage.local.set({ pendingEvents: [...pending, event] });
 }
 
-// Send on initial load
-void sendMetadata();
+// Capture on initial page load
+void captureMetadata();
 
-// Re-send on SPA navigation
-window.addEventListener("popstate", () => { void sendMetadata(); });
-window.addEventListener("hashchange", () => { void sendMetadata(); });
+// Re-capture on SPA navigation
+window.addEventListener("popstate", () => { void captureMetadata(); });
+window.addEventListener("hashchange", () => { void captureMetadata(); });
