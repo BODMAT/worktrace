@@ -14,6 +14,9 @@
 /* ─── Reset ──────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Enforce the HTML hidden attribute — overrides any display: flex/block from classes */
+[hidden] { display: none !important; }
+
 body {
   width: 320px;
   background: var(--c-bg);

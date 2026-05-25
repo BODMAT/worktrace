@@ -245,6 +245,10 @@ async function refreshTrack(): Promise<void> {
 
 // ─── Blocklist ─────────────────────────────────────────────────────────────────
 
+// Tracks accordion open/closed state independently of DOM so refreshBlocklist
+// never accidentally resets the visual state between user interactions.
+let isAccordionOpen = false;
+
 /** Returns the hostname of the current active tab, or null if unavailable. */
 async function getCurrentHostname(): Promise<string | null> {
   try {
@@ -276,11 +280,14 @@ async function refreshBlocklist(): Promise<void> {
   // 4б: update accordion + list
   const count = domains.length;
   if (count === 0) {
+    isAccordionOpen = false;       // reset state when list becomes empty
     btnAccordion.hidden = true;
     blocklistList.hidden = true;
   } else {
     btnAccordion.hidden = false;
-    blocklistCountLabel.textContent = `▾ ${String(count)} BLOCKED`;
+    // Respect the current open/closed state — don't reset what the user chose
+    blocklistList.hidden = !isAccordionOpen;
+    blocklistCountLabel.textContent = `${isAccordionOpen ? "▴" : "▾"} ${String(count)} BLOCKED`;
   }
 
   // Re-render list items
@@ -327,10 +334,9 @@ toggleCurrentDomain.addEventListener("change", async () => {
 });
 
 btnAccordion.addEventListener("click", () => {
-  blocklistList.hidden = !blocklistList.hidden;
-  const isOpen = !blocklistList.hidden;
-  const count = blocklistList.children.length;
-  blocklistCountLabel.textContent = `${isOpen ? "▴" : "▾"} ${String(count)} BLOCKED`;
+  isAccordionOpen = !isAccordionOpen;
+  blocklistList.hidden = !isAccordionOpen;
+  blocklistCountLabel.textContent = `${isAccordionOpen ? "▴" : "▾"} ${String(blocklistList.children.length)} BLOCKED`;
 });
 
 // Delegated handler for per-domain toggles inside the list
