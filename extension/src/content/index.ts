@@ -1,43 +1,52 @@
 import type { ContentMessage, PageMetadata } from "../types/content";
+import type { ParsingMode } from "../types/parsing";
 
-const BLOCKLIST_KEY = "blockedDomains";
+/** Music sites always get full parsing regardless of the global mode setting. */
+const MUSIC_HOSTNAMES = new Set(["music.youtube.com", "soundcloud.com"]);
 
-/**
- * Returns true if the current page's hostname is in the blocklist.
- * Reads directly from chrome.storage.local — no round-trip to background.
- */
-async function isCurrentHostnameBlocked(): Promise<boolean> {
-  const r = await chrome.storage.local.get(BLOCKLIST_KEY);
-  const blocklist = (r[BLOCKLIST_KEY] as string[] | undefined) ?? [];
-  const hostname = window.location.hostname;
-  return blocklist.some(
-    (blocked) => hostname === blocked || hostname.endsWith(`.${blocked}`),
-  );
-}
+function parseMetadata(mode: ParsingMode): PageMetadata {
+  const headings =
+    mode !== "meta"
+      ? Array.from(document.querySelectorAll("h1, h2, h3"))
+          .map((el) => el.textContent?.trim() ?? "")
+          .filter((text) => text.length > 0)
+      : [];
 
-function parseMetadata(): PageMetadata {
-  const headings = Array.from(document.querySelectorAll("h1, h2, h3"))
-    .map((el) => el.textContent?.trim() ?? "")
-    .filter((text) => text.length > 0);
+  const metaDescription =
+    mode !== "headings"
+      ? (document.querySelector<HTMLMetaElement>('meta[name="description"]')
+          ?.content ?? null)
+      : null;
 
   return {
     url: window.location.href,
     title: document.title,
-    metaDescription:
-      document.querySelector<HTMLMetaElement>('meta[name="description"]')
-        ?.content ?? null,
+    metaDescription,
     headings,
   };
 }
 
 async function sendMetadata(): Promise<void> {
-  // First-level filter: do not parse or send data for blocked domains
-  const blocked = await isCurrentHostnameBlocked();
+  // Single storage read — blocklist and parsing mode in one I/O call
+  const r = await chrome.storage.local.get(["blockedDomains", "parsingMode"]);
+  const blocklist = (r["blockedDomains"] as string[] | undefined) ?? [];
+  const hostname = window.location.hostname;
+
+  // Level-1 blocklist filter: do not parse or send data for blocked domains
+  const blocked = blocklist.some(
+    (d) => hostname === d || hostname.endsWith(`.${d}`),
+  );
   if (blocked) return;
+
+  // Music sites always use full mode to preserve album/playlist context
+  const globalMode = (r["parsingMode"] as ParsingMode | undefined) ?? "full";
+  const effectiveMode: ParsingMode = MUSIC_HOSTNAMES.has(hostname)
+    ? "full"
+    : globalMode;
 
   const message: ContentMessage = {
     type: "PAGE_METADATA",
-    payload: parseMetadata(),
+    payload: parseMetadata(effectiveMode),
   };
   chrome.runtime.sendMessage(message).catch(() => {
     // Service worker may be inactive — silently ignore
