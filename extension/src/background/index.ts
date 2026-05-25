@@ -202,6 +202,13 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
   try {
     const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
     if (track) {
+      // Blocklist check before storing or persisting to DB
+      const sourceUrl = `https://${
+        track.source === "youtube-music" ? "music.youtube.com" : "soundcloud.com"
+      }`;
+      const blocked = await isDomainBlocked(sourceUrl);
+      if (blocked) return null;
+
       await chrome.storage.local.set({ currentTrack: track });
       // Save to DB only if we don't already have a DB record for this tab pull
       const existing = await chrome.storage.local.get("currentDbTrackId");
