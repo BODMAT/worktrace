@@ -192,11 +192,15 @@ async function refreshSyncIndicator(): Promise<void> {
 let activeTrack: TrackInfo | null = null;
 // Accumulated display duration in ms — only increments while session is active
 // AND music is actually playing (detected by playbackTime changing).
-// Reset to 0 on track change; initialised from capturedAt on first popup load.
+// Initialised from storage (trackListenedMs + currentPeriodStartMs) on popup open
+// so the value does not jump after pause or popup reopen.
 let displayDurationMs = 0;
 // Previous playbackTime value — compared each tick to detect play vs pause.
 // null = not yet initialised (first tick after track appears).
 let prevPlaybackTime: string | null = null;
+// Set to true when track changes — triggers a one-time storage read to restore
+// the correct displayDurationMs (avoids the jump-on-reopen bug).
+let needsStorageInit = false;
 
 function formatTrackDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -205,16 +209,33 @@ function formatTrackDuration(ms: number): string {
   return `${String(m)}:${String(s).padStart(2, "0")}`;
 }
 
+/** Parses "M:SS" or "H:MM:SS" → seconds. Returns null for invalid input. */
+function parsePlaybackTime(t: string): number | null {
+  if (!t.trim()) return null;
+  const parts = t.trim().split(":").map((n) => parseInt(n, 10));
+  if (parts.some((p) => isNaN(p))) return null;
+  if (parts.length === 2) return (parts[0] ?? 0) * 60 + (parts[1] ?? 0);
+  if (parts.length === 3) return (parts[0] ?? 0) * 3600 + (parts[1] ?? 0) * 60 + (parts[2] ?? 0);
+  return null;
+}
+
+interface PopupSnapshot {
+  trackKey: string;
+  playbackTime: string;   // raw DOM value e.g. "1:23"
+  displayDurationMs: number;
+  capturedAt: number;
+}
+
 function applyTrack(track: TrackInfo | null): void {
   const prevKey = activeTrack ? `${activeTrack.title}::${activeTrack.artist}` : null;
   const newKey  = track       ? `${track.title}::${track.artist}`             : null;
 
-  // Reset duration counter and playback-time baseline when track changes
+  // On track change: reset counters and schedule a storage read to restore
+  // the correct accumulated duration (fixes jump-on-reopen bug).
   if (newKey !== prevKey) {
-    displayDurationMs = track
-      ? Math.max(0, Date.now() - new Date(track.capturedAt).getTime())
-      : 0;
-    prevPlaybackTime = null;
+    displayDurationMs = 0;
+    prevPlaybackTime  = null;
+    needsStorageInit  = !!track;
   }
 
   activeTrack = track;
@@ -234,6 +255,68 @@ function applyTrack(track: TrackInfo | null): void {
   trackSource.className   = `popup__track-source popup__track-source--${isYTM ? "ytm" : "sc"}`;
 }
 
+/**
+ * Restores displayDurationMs from storage after popup opens or track changes.
+ *
+ * PRIORITY 1 — session not active (paused / stopped): the track timer must be
+ * frozen, period. Use the snapshot value as-is (no delta). The DOM playbackTime
+ * may still be advancing because session pause does not pause the music player,
+ * but we must NOT count that time.
+ *
+ * PRIORITY 2 — session active: compute delta from the snapshot's playbackTime
+ * to the current DOM playbackTime. This is the source of truth for "was the
+ * music actually playing while popup was closed".
+ *   - delta > 0 → music played for `delta` seconds → add to snapshot value
+ *   - delta = 0 → music was paused in the player → keep snapshot value
+ *   - delta < 0 → user seeked backward → keep snapshot value (best effort)
+ *
+ * PRIORITY 3 — no snapshot for this track: fall back to background-accumulated
+ * trackListenedMs (correct for session pauses, best-effort otherwise).
+ */
+async function initDurationFromStorage(): Promise<void> {
+  if (!activeTrack) return;
+  const trackKey = `${activeTrack.title}::${activeTrack.artist}`;
+  const r = await chrome.storage.local.get([
+    "popupSnapshot",
+    "trackListenedMs",
+    "currentPeriodStartMs",
+  ]);
+  const snap = r["popupSnapshot"] as PopupSnapshot | undefined;
+
+  // PRIORITY 1: session paused/stopped → freeze track timer, no delta.
+  if (!isSessionActive) {
+    if (snap && snap.trackKey === trackKey) {
+      displayDurationMs = snap.displayDurationMs;
+    } else {
+      displayDurationMs = (r["trackListenedMs"] as number | undefined) ?? 0;
+    }
+    trackDuration.textContent = formatTrackDuration(displayDurationMs);
+    return;
+  }
+
+  // PRIORITY 2: session active + matching snapshot → playbackTime delta.
+  if (snap && snap.trackKey === trackKey) {
+    const prevSec = parsePlaybackTime(snap.playbackTime);
+    const currSec = parsePlaybackTime(activeTrack.playbackTime ?? "");
+    if (prevSec !== null && currSec !== null) {
+      const deltaSec = currSec - prevSec;
+      const addMs = deltaSec > 0 ? deltaSec * 1000 : 0;
+      displayDurationMs = snap.displayDurationMs + addMs;
+    } else {
+      displayDurationMs = snap.displayDurationMs;
+    }
+    trackDuration.textContent = formatTrackDuration(displayDurationMs);
+    return;
+  }
+
+  // PRIORITY 3: fallback — background-accumulated value.
+  const accumulated = (r["trackListenedMs"] as number | undefined) ?? 0;
+  const periodStart = r["currentPeriodStartMs"] as number | undefined;
+  const currentPeriodMs = periodStart ? Math.max(0, Date.now() - periodStart) : 0;
+  displayDurationMs = accumulated + currentPeriodMs;
+  trackDuration.textContent = formatTrackDuration(displayDurationMs);
+}
+
 function refreshDuration(): void {
   if (!activeTrack) return;
 
@@ -249,12 +332,27 @@ function refreshDuration(): void {
 
   if (isSessionActive && trackIsPlaying) displayDurationMs += 1000;
   trackDuration.textContent = formatTrackDuration(displayDurationMs);
+
+  // Save snapshot every tick — initDurationFromStorage will compare its
+  // playbackTime against fresh DOM value on reopen to compute true delta.
+  const snap: PopupSnapshot = {
+    trackKey: `${activeTrack.title}::${activeTrack.artist}`,
+    playbackTime: curr,
+    displayDurationMs,
+    capturedAt: Date.now(),
+  };
+  void chrome.storage.local.set({ popupSnapshot: snap });
 }
 
 async function refreshTrack(): Promise<void> {
   const res = await sendMusic({ type: "TRACK_GET_CURRENT" }).catch(() => null);
   if (!res || !res.success) return;
   applyTrack(res.track);
+  // One-time storage read when track is new — restores correct duration without jump
+  if (needsStorageInit) {
+    needsStorageInit = false;
+    await initDurationFromStorage();
+  }
 }
 
 // ─── Blocklist ─────────────────────────────────────────────────────────────────

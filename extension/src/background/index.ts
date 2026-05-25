@@ -247,13 +247,18 @@ async function saveTrackToDb(track: TrackInfo, dbSessionId: string): Promise<voi
 
 // Closes the previous DB track record: sends endedAt + listenedMs delta.
 async function endCurrentDbTrack(): Promise<void> {
-  const r = await chrome.storage.local.get(["currentDbTrackId", "currentPeriodStartMs"]);
+  const r = await chrome.storage.local.get(["currentDbTrackId", "currentPeriodStartMs", "trackListenedMs"]);
   const id          = r["currentDbTrackId"]    as string | undefined;
   const periodStart = r["currentPeriodStartMs"] as number | undefined;
   if (!id) return;
 
   const now        = Date.now();
   const listenedMs = periodStart ? Math.max(0, now - periodStart) : 0;
+
+  // Accumulate into trackListenedMs so the popup can restore correct display
+  // duration without jumping when it's reopened after a pause.
+  const prevDisplayMs = (r["trackListenedMs"] as number | undefined) ?? 0;
+  await chrome.storage.local.set({ trackListenedMs: prevDisplayMs + listenedMs });
 
   try {
     await apiFetch(`/api/v1/tracks/${id}`, {
@@ -373,6 +378,7 @@ chrome.runtime.onMessage.addListener(
             session: session ? { ...session, elapsedMs: getElapsedMs(session) } : null,
           });
           if (session?.dbSessionId) void tryEndDbSession(session.dbSessionId);
+          void chrome.storage.local.remove(["trackListenedMs", "popupSnapshot"]);
         })
         .catch((err: unknown) =>
           sendResponse({
@@ -501,7 +507,10 @@ chrome.runtime.onMessage.addListener(
 
         // Close the previous track then save the new one
         const session = await getSession();
-        await endCurrentDbTrack(); // no-op if no previous track
+        await endCurrentDbTrack(); // no-op if no previous track; also accumulates trackListenedMs
+        // Reset display accumulators — new track starts fresh
+        await chrome.storage.local.set({ trackListenedMs: 0 });
+        await chrome.storage.local.remove("popupSnapshot");
         if (session && session.pausedAt === null && session.dbSessionId) {
           void saveTrackToDb(track, session.dbSessionId);
         }
