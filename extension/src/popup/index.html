@@ -77,6 +77,30 @@
         <button class="btn btn--note" id="btn-note">+ LOG NOTE</button>
       </section>
 
+      <!-- Privacy / Blocklist -->
+      <section class="popup__blocklist">
+
+        <div class="popup__field-label">PRIVACY</div>
+
+        <!-- 4а: основний тоггл — поточний сайт -->
+        <div class="popup__blocklist-current">
+          <span class="popup__blocklist-domain" id="current-domain">—</span>
+          <label class="popup__toggle" title="Block this site">
+            <input type="checkbox" id="toggle-current-domain" />
+            <span class="popup__toggle-track"></span>
+          </label>
+        </div>
+
+        <!-- 4б: акордеон зі списком заблокованих -->
+        <button class="popup__blocklist-accordion" id="btn-blocklist-accordion" hidden>
+          <span id="blocklist-count-label">▾ 0 BLOCKED</span>
+        </button>
+        <div class="popup__blocklist-list" id="blocklist-list" hidden>
+          <!-- dynamically filled: one .popup__blocklist-item per blocked domain -->
+        </div>
+
+      </section>
+
     </div>
     <script type="module" src="./popup.ts"></script>
   </body>

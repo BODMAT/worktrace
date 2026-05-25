@@ -1,5 +1,16 @@
 import type { TrackInfo, MusicMessage } from "../types/music";
 
+const BLOCKLIST_KEY = "blockedDomains";
+
+async function isCurrentHostnameBlocked(): Promise<boolean> {
+  const r = await chrome.storage.local.get(BLOCKLIST_KEY);
+  const blocklist = (r[BLOCKLIST_KEY] as string[] | undefined) ?? [];
+  const hostname = window.location.hostname;
+  return blocklist.some(
+    (blocked) => hostname === blocked || hostname.endsWith(`.${blocked}`),
+  );
+}
+
 // ─── DOM parsing ───────────────────────────────────────────────────────────────
 
 /**
@@ -79,8 +90,14 @@ function sendIfChanged(track: TrackInfo | null): void {
   if (key === previousKey) return;
   previousKey = key;
 
-  const message: MusicMessage = { type: "TRACK_CAPTURED", payload: track };
-  chrome.runtime.sendMessage(message).catch(() => { /* SW inactive — ignore */ });
+  // First-level filter: do not send track data for blocked domains
+  isCurrentHostnameBlocked()
+    .then((blocked) => {
+      if (blocked) return;
+      const message: MusicMessage = { type: "TRACK_CAPTURED", payload: track };
+      chrome.runtime.sendMessage(message).catch(() => { /* SW inactive — ignore */ });
+    })
+    .catch(() => { /* storage read failed — skip silently */ });
 }
 
 // ─── MutationObserver ─────────────────────────────────────────────────────────

@@ -1,9 +1,16 @@
 import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
+import type { BlocklistMessage, BlocklistResponse } from "../types/blocklist";
 import type { ContentMessage } from "../types/content";
 import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
 import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
+import {
+  getBlocklist,
+  addDomain,
+  removeDomain,
+  isDomainBlocked,
+} from "./blocklist";
 import {
   getSession,
   startSession,
@@ -195,6 +202,13 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
   try {
     const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
     if (track) {
+      // Blocklist check before storing or persisting to DB
+      const sourceUrl = `https://${
+        track.source === "youtube-music" ? "music.youtube.com" : "soundcloud.com"
+      }`;
+      const blocked = await isDomainBlocked(sourceUrl);
+      if (blocked) return null;
+
       await chrome.storage.local.set({ currentTrack: track });
       // Save to DB only if we don't already have a DB record for this tab pull
       const existing = await chrome.storage.local.get("currentDbTrackId");
@@ -263,13 +277,13 @@ async function enqueuePending(event: PendingEvent): Promise<void> {
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage;
+type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage | BlocklistMessage;
 
 chrome.runtime.onMessage.addListener(
   (
     message: IncomingMessage,
     _sender,
-    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse) => void,
+    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse | BlocklistResponse) => void,
   ) => {
     if (message.type === "AUTH_LOGIN") {
       if (DEV_MODE) {
@@ -471,15 +485,26 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "TRACK_CAPTURED") {
       const track = message.payload;
-      void chrome.storage.local.set({ currentTrack: track });
 
-      // Close the previous track then save the new one
-      getSession().then(async (session) => {
+      // Background-level blocklist check: second line of defence after content script
+      // Derive the domain from the known source → hostname mapping
+      const trackSourceDomain: Record<TrackInfo["source"], string> = {
+        "youtube-music": "music.youtube.com",
+        "soundcloud":    "soundcloud.com",
+      };
+      void (async () => {
+        const blocked = await isDomainBlocked(`https://${trackSourceDomain[track.source]}`);
+        if (blocked) return;
+
+        void chrome.storage.local.set({ currentTrack: track });
+
+        // Close the previous track then save the new one
+        const session = await getSession();
         await endCurrentDbTrack(); // no-op if no previous track
         if (session && session.pausedAt === null && session.dbSessionId) {
           void saveTrackToDb(track, session.dbSessionId);
         }
-      });
+      })();
 
       return false;
     }
@@ -520,9 +545,15 @@ chrome.runtime.onMessage.addListener(
 
     if (message.type === "PAGE_METADATA") {
       // Store metadata only when a session is active (AC 5 will batch-send it)
-      getSession().then((session) => {
-        if (!session) return;
+      // Background-level blocklist check: second line of defence after content script
+      void (async () => {
         const { url, title, metaDescription, headings } = message.payload;
+        const blocked = await isDomainBlocked(url);
+        if (blocked) return;
+
+        const session = await getSession();
+        if (!session) return;
+
         const content = [metaDescription, ...headings].filter(Boolean).join(" | ") || null;
         const event: PendingEvent = {
           url,
@@ -532,8 +563,46 @@ chrome.runtime.onMessage.addListener(
           timestamp: new Date().toISOString(),
         };
         void enqueuePending(event);
-      });
+      })();
       return false; // no async response needed
+    }
+
+    // ─── Blocklist messages ──────────────────────────────────────────────────
+
+    if (message.type === "BLOCKLIST_GET") {
+      getBlocklist()
+        .then((domains) => sendResponse({ success: true, domains }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "BLOCKLIST_ADD") {
+      addDomain(message.domain)
+        .then(() => sendResponse({ success: true }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "BLOCKLIST_REMOVE") {
+      removeDomain(message.domain)
+        .then(() => sendResponse({ success: true }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
     }
 
     return false;
