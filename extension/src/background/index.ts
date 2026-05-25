@@ -2,6 +2,7 @@ import type { AuthMessage, AuthResponse, StoredAuth } from "../types/auth";
 import type { BlocklistMessage, BlocklistResponse } from "../types/blocklist";
 import type { ContentMessage } from "../types/content";
 import type { MusicMessage, MusicResponse, TrackInfo } from "../types/music";
+import type { ParsingModeMessage, ParsingModeResponse } from "../types/parsing";
 import type { PendingEvent } from "../types/pending";
 import type { SessionMessage, SessionResponse } from "../types/session";
 import type { SyncMessage, SyncResponse } from "../types/sync";
@@ -11,6 +12,7 @@ import {
   removeDomain,
   isDomainBlocked,
 } from "./blocklist";
+import { getParsingMode, setParsingMode } from "./parsing";
 import {
   getSession,
   startSession,
@@ -277,13 +279,13 @@ async function enqueuePending(event: PendingEvent): Promise<void> {
 
 // ─── Message listener ──────────────────────────────────────────────────────────
 
-type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage | BlocklistMessage;
+type IncomingMessage = AuthMessage | SessionMessage | ContentMessage | SyncMessage | MusicMessage | BlocklistMessage | ParsingModeMessage;
 
 chrome.runtime.onMessage.addListener(
   (
     message: IncomingMessage,
     _sender,
-    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse | BlocklistResponse) => void,
+    sendResponse: (r: AuthResponse | SessionResponse | SyncResponse | MusicResponse | BlocklistResponse | ParsingModeResponse) => void,
   ) => {
     if (message.type === "AUTH_LOGIN") {
       if (DEV_MODE) {
@@ -596,6 +598,32 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "BLOCKLIST_REMOVE") {
       removeDomain(message.domain)
         .then(() => sendResponse({ success: true }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    // ─── Parsing mode messages ───────────────────────────────────────────────
+
+    if (message.type === "PARSING_MODE_GET") {
+      getParsingMode()
+        .then((mode) => sendResponse({ success: true, mode }))
+        .catch((err: unknown) =>
+          sendResponse({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }),
+        );
+      return true;
+    }
+
+    if (message.type === "PARSING_MODE_SET") {
+      setParsingMode(message.mode)
+        .then(() => sendResponse({ success: true, mode: message.mode }))
         .catch((err: unknown) =>
           sendResponse({
             success: false,
