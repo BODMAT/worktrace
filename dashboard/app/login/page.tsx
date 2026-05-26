@@ -18,7 +18,7 @@ export default function LoginPage() {
 
         {clientId ? (
           <>
-            <Script src="https://accounts.google.com/gsi/client" strategy="afterInteractive" />
+            <Script src="https://accounts.google.com/gsi/client?hl=en" strategy="afterInteractive" />
             <GoogleLoginButton clientId={clientId} />
           </>
         ) : (
