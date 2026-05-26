@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import jwt from "jsonwebtoken";
+import { jwtVerify } from "jose";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized") {
@@ -8,7 +9,7 @@ export class UnauthorizedError extends Error {
   }
 }
 
-interface JwtPayload {
+export interface JwtPayload {
   sub:   string;
   email: string;
 }
@@ -17,6 +18,21 @@ function isPayload(v: unknown): v is JwtPayload {
   if (typeof v !== "object" || v === null) return false;
   const r = v as Record<string, unknown>;
   return typeof r["sub"] === "string" && typeof r["email"] === "string";
+}
+
+export async function verifyJwt(token: string): Promise<JwtPayload> {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is not set");
+
+  let payload: unknown;
+  try {
+    const result = await jwtVerify(token, new TextEncoder().encode(secret));
+    payload = result.payload;
+  } catch {
+    throw new UnauthorizedError("Invalid or expired token");
+  }
+  if (!isPayload(payload)) throw new UnauthorizedError("Invalid token payload");
+  return payload;
 }
 
 export function requireUser(req: NextRequest): { id: string; email: string } {
