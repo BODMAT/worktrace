@@ -50,7 +50,7 @@ function issueJWT(userId: string, email: string): string {
   );
 }
 
-export async function authenticateExtensionUser(googleIdToken: string): Promise<string> {
+export async function authenticateGoogleUser(googleIdToken: string): Promise<string> {
   const googleUser = await verifyGoogleToken(googleIdToken);
   const user       = await upsertUser(googleUser);
   return issueJWT(user.id, user.email);
