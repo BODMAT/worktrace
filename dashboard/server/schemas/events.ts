@@ -10,3 +10,19 @@ export const CreateEventInput = EventUncheckedCreateInputObjectZodSchema
   });
 
 export type CreateEventInput = z.infer<typeof CreateEventInput>;
+
+export const EventListFilters = z.object({
+  from: z.coerce.date().optional(),
+  to:   z.coerce.date().optional(),
+  tags: z
+    .string()
+    .optional()
+    .transform((s) =>
+      (s ?? "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+});
+
+export type EventListFilters = z.infer<typeof EventListFilters>;
