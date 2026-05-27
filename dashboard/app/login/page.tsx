@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Script from "next/script";
 import { GoogleLoginButton } from "./google-button";
+
+export const metadata: Metadata = {
+  title:       "Sign in",
+  description: "Sign in to WorkTrace with Google to view your captured dev sessions.",
+  robots:      { index: false, follow: false },
+};
 
 export default function LoginPage() {
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;

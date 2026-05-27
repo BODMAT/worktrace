@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import {
   HydrationBoundary,
   QueryClient,
   dehydrate,
 } from "@tanstack/react-query";
 import { cookies } from "next/headers";
+
+export const metadata: Metadata = {
+  title:       "Dashboard",
+  description: "Browse captured events, filter by date or tag, and review your top sessions.",
+  robots:      { index: false, follow: false },
+};
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE } from "@/server/cookies";
 import { verifyJwt } from "@/server/jwt";
