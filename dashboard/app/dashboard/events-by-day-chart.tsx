@@ -32,12 +32,13 @@ export function EventsByDayChart({ byDay }: { byDay: DayBucket[] }) {
   }
 
   return (
-    <div className="rounded border border-border bg-surface p-4">
+    <div className="flex h-full flex-col rounded border border-border bg-surface p-4">
       <div className="mb-3 text-[10px] font-bold tracking-widest text-muted">
         EVENTS PER DAY
       </div>
-      <div className="h-40">
-        <Line
+      <div className="flex flex-1 items-center">
+        <div className="h-40 w-full">
+          <Line
           data={{
             labels:   filled.map((d) => d.date.slice(5)),
             datasets: [
@@ -73,7 +74,8 @@ export function EventsByDayChart({ byDay }: { byDay: DayBucket[] }) {
               },
             },
           }}
-        />
+          />
+        </div>
       </div>
     </div>
   );
