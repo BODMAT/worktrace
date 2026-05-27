@@ -1,31 +1,59 @@
-import { cookies } from "next/headers";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE } from "@/server/cookies";
-import { verifyJwt } from "@/server/jwt";
-import { LogoutButton } from "./logout-button";
+import {
+  HydrationBoundary,
+  QueryClient,
+  dehydrate,
+} from "@tanstack/react-query";
+import { getCurrentUser } from "@/server/current-user";
+import { getEventStatsForUser, listEventsForUser } from "@/server/events";
+import { getTopSessionsForUser } from "@/server/sessions";
+import {
+  DEFAULT_FILTERS,
+  PAGE_SIZE,
+  eventsQueryKey,
+  statsQueryKey,
+  topSessionsQueryKey,
+} from "./feed-shared";
+import { FeedRoot } from "./feed-root";
+
+export const metadata: Metadata = {
+  title:       "Dashboard",
+  description: "Browse captured events, filter by date or tag, and review your top sessions.",
+  robots:      { index: false, follow: false },
+};
 
 export default async function DashboardPage() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token) redirect("/login");
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
-  let email: string;
-  try {
-    ({ email } = await verifyJwt(token));
-  } catch {
-    redirect("/login");
-  }
+  const qc = new QueryClient();
+  await Promise.all([
+    qc.prefetchInfiniteQuery({
+      queryKey: eventsQueryKey(DEFAULT_FILTERS),
+      queryFn:  () =>
+        listEventsForUser(user.id, { tags: [], limit: PAGE_SIZE }),
+      initialPageParam: null as string | null,
+    }),
+    qc.prefetchQuery({
+      queryKey: statsQueryKey(DEFAULT_FILTERS),
+      queryFn:  () => getEventStatsForUser(user.id, { tags: [] }),
+    }),
+    qc.prefetchQuery({
+      queryKey: topSessionsQueryKey,
+      queryFn:  () => getTopSessionsForUser(user.id, 3),
+    }),
+  ]);
 
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 dark:bg-black">
-      <div className="flex w-full max-w-md flex-col items-center gap-6 rounded-2xl border border-black/[.08] bg-white p-10 dark:border-white/[.145] dark:bg-zinc-950">
-        <h1 className="text-2xl font-semibold tracking-tight text-black dark:text-zinc-50">
-          Welcome to WorkTrace
-        </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Signed in as <span className="font-medium text-black dark:text-zinc-50">{email}</span>
-        </p>
-        <LogoutButton />
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8">
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-base font-bold tracking-widest text-cyan">EVENT FEED</h1>
       </div>
-    </main>
+
+      <HydrationBoundary state={dehydrate(qc)}>
+        <FeedRoot />
+      </HydrationBoundary>
+    </div>
   );
 }

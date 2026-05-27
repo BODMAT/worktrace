@@ -20,9 +20,11 @@ export function LogoutButton() {
           router.refresh();
         }
       }}
-      className="flex h-10 items-center justify-center rounded-full border border-black/[.08] px-5 text-sm font-medium transition-colors hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-white/[.06]"
+      title="Sign out"
+      aria-label="Sign out"
+      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-border bg-surface text-base text-muted transition-all hover:border-pink hover:bg-pink/10 hover:text-pink hover:shadow-[0_0_8px_color-mix(in_srgb,var(--c-pink)_30%,transparent)] disabled:cursor-not-allowed disabled:opacity-30"
     >
-      {pending ? "Signing out…" : "Sign out"}
+      {pending ? "…" : "⎋"}
     </button>
   );
 }

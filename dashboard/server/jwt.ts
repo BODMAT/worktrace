@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import jwt from "jsonwebtoken";
 import { jwtVerify } from "jose";
+import { SESSION_COOKIE } from "@/server/cookies";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized") {
@@ -35,13 +36,18 @@ export async function verifyJwt(token: string): Promise<JwtPayload> {
   return payload;
 }
 
-export function requireUser(req: NextRequest): { id: string; email: string } {
+function extractToken(req: NextRequest): string | null {
   const header = req.headers.get("authorization");
-  if (!header?.startsWith("Bearer ")) {
-    throw new UnauthorizedError("Missing or malformed Authorization header");
+  if (header?.startsWith("Bearer ")) {
+    const t = header.slice("Bearer ".length).trim();
+    if (t) return t;
   }
-  const token = header.slice("Bearer ".length).trim();
-  if (!token) throw new UnauthorizedError("Empty bearer token");
+  return req.cookies.get(SESSION_COOKIE)?.value ?? null;
+}
+
+export function requireUser(req: NextRequest): { id: string; email: string } {
+  const token = extractToken(req);
+  if (!token) throw new UnauthorizedError("Missing authentication credentials");
 
   const secret = process.env.JWT_SECRET;
   if (!secret) throw new Error("JWT_SECRET is not set");

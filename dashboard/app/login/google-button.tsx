@@ -54,7 +54,7 @@ export function GoogleLoginButton({ clientId }: { clientId: string }) {
   return (
     <div className="flex flex-col items-center gap-3">
       <div ref={buttonRef} />
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-pink">{error}</p>}
     </div>
   );
 }

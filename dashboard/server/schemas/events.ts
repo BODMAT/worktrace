@@ -10,3 +10,31 @@ export const CreateEventInput = EventUncheckedCreateInputObjectZodSchema
   });
 
 export type CreateEventInput = z.infer<typeof CreateEventInput>;
+
+const tagsSchema = z
+  .string()
+  .optional()
+  .transform((s) =>
+    (s ?? "")
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
+  );
+
+export const EventListFilters = z.object({
+  from:   z.coerce.date().optional(),
+  to:     z.coerce.date().optional(),
+  cursor: z.string().optional(),
+  limit:  z.coerce.number().int().min(1).max(100).optional().default(30),
+  tags:   tagsSchema,
+});
+
+export type EventListFilters = z.infer<typeof EventListFilters>;
+
+export const EventStatsFilters = z.object({
+  from: z.coerce.date().optional(),
+  to:   z.coerce.date().optional(),
+  tags: tagsSchema,
+});
+
+export type EventStatsFilters = z.infer<typeof EventStatsFilters>;

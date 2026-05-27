@@ -1,9 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createEventForUser, SessionNotFoundError } from "@/server/events";
-import { CreateEventInput } from "@/server/schemas/events";
+import {
+  createEventForUser,
+  listEventsForUser,
+  SessionNotFoundError,
+} from "@/server/events";
+import { CreateEventInput, EventListFilters } from "@/server/schemas/events";
 import { withCors, corsPreflight } from "@/server/cors";
 import { requireUser, UnauthorizedError } from "@/server/jwt";
+
+export const GET = withCors(async (req) => {
+  let user;
+  try {
+    user = requireUser(req);
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return NextResponse.json({ error: err.message }, { status: 401 });
+    }
+    throw err;
+  }
+
+  const params = Object.fromEntries(req.nextUrl.searchParams);
+  const parsed = EventListFilters.safeParse(params);
+  if (!parsed.success) {
+    return NextResponse.json({ error: z.treeifyError(parsed.error) }, { status: 400 });
+  }
+
+  const page = await listEventsForUser(user.id, parsed.data);
+  return NextResponse.json(page);
+});
 
 export const POST = withCors(async (req) => {
   let user;
