@@ -1,9 +1,9 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { TopSession } from "@/types/event";
 import { fetchTopSessions, topSessionsQueryKey } from "./feed-shared";
+import { useClientLocalized } from "./use-client-localized";
 
 function formatDuration(seconds: number): string {
   const total = Math.max(0, Math.round(seconds));
@@ -23,16 +23,6 @@ function localDay(iso: string): string {
     month: "short",
     day:   "2-digit",
   });
-}
-
-const subscribe = () => () => {};
-
-function useLocalDay(iso: string): string {
-  return useSyncExternalStore(
-    subscribe,
-    () => localDay(iso),
-    () => utcDay(iso),
-  );
 }
 
 export function TopSessions() {
@@ -79,7 +69,7 @@ export function TopSessions() {
 }
 
 function SessionRow({ session }: { session: TopSession }) {
-  const day = useLocalDay(session.startedAt);
+  const day = useClientLocalized(session.startedAt, utcDay, localDay);
   const isActive = session.endedAt === null;
 
   const ratio = session.totalSeconds > 0

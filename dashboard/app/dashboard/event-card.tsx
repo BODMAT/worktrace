@@ -1,7 +1,7 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import type { EventDTO } from "@/types/event";
+import { useClientLocalized } from "./use-client-localized";
 
 function hostnameOf(url: string): string {
   try {
@@ -26,18 +26,8 @@ function localShort(iso: string): string {
   });
 }
 
-const subscribe = () => () => {};
-
-function useLocalizedTime(iso: string): string {
-  return useSyncExternalStore(
-    subscribe,
-    () => localShort(iso),
-    () => utcShort(iso),
-  );
-}
-
 export function EventCard({ event }: { event: EventDTO }) {
-  const time = useLocalizedTime(event.timestamp);
+  const time = useClientLocalized(event.timestamp, utcShort, localShort);
 
   return (
     <article className="flex flex-col gap-2 rounded border border-border bg-surface p-3 transition-colors hover:border-purple/60">

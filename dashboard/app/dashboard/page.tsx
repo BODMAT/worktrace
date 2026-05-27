@@ -1,19 +1,11 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import {
   HydrationBoundary,
   QueryClient,
   dehydrate,
 } from "@tanstack/react-query";
-import { cookies } from "next/headers";
-
-export const metadata: Metadata = {
-  title:       "Dashboard",
-  description: "Browse captured events, filter by date or tag, and review your top sessions.",
-  robots:      { index: false, follow: false },
-};
-import { redirect } from "next/navigation";
-import { SESSION_COOKIE } from "@/server/cookies";
-import { verifyJwt } from "@/server/jwt";
+import { getCurrentUser } from "@/server/current-user";
 import { getEventStatsForUser, listEventsForUser } from "@/server/events";
 import { getTopSessionsForUser } from "@/server/sessions";
 import {
@@ -25,32 +17,31 @@ import {
 } from "./feed-shared";
 import { FeedRoot } from "./feed-root";
 
-export default async function DashboardPage() {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  if (!token) redirect("/login");
+export const metadata: Metadata = {
+  title:       "Dashboard",
+  description: "Browse captured events, filter by date or tag, and review your top sessions.",
+  robots:      { index: false, follow: false },
+};
 
-  let userId: string;
-  try {
-    ({ sub: userId } = await verifyJwt(token));
-  } catch {
-    redirect("/login");
-  }
+export default async function DashboardPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
   const qc = new QueryClient();
   await Promise.all([
     qc.prefetchInfiniteQuery({
       queryKey: eventsQueryKey(DEFAULT_FILTERS),
       queryFn:  () =>
-        listEventsForUser(userId, { tags: [], limit: PAGE_SIZE }),
+        listEventsForUser(user.id, { tags: [], limit: PAGE_SIZE }),
       initialPageParam: null as string | null,
     }),
     qc.prefetchQuery({
       queryKey: statsQueryKey(DEFAULT_FILTERS),
-      queryFn:  () => getEventStatsForUser(userId, { tags: [] }),
+      queryFn:  () => getEventStatsForUser(user.id, { tags: [] }),
     }),
     qc.prefetchQuery({
       queryKey: topSessionsQueryKey,
-      queryFn:  () => getTopSessionsForUser(userId, 3),
+      queryFn:  () => getTopSessionsForUser(user.id, 3),
     }),
   ]);
 
