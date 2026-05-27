@@ -5,14 +5,25 @@ export default function LoginPage() {
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   return (
-    <main className="flex flex-1 items-center justify-center bg-zinc-50 dark:bg-black">
-      <div className="flex w-full max-w-sm flex-col items-center gap-8 rounded-2xl border border-black/[.08] bg-white p-10 dark:border-white/[.145] dark:bg-zinc-950">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-black dark:text-zinc-50">
-            Sign in to WorkTrace
-          </h1>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Continue with the same Google account you use in the extension.
+    <main className="flex flex-1 items-center justify-center bg-bg">
+      <div className="flex w-full max-w-sm flex-col items-center gap-8 rounded-md border border-border bg-surface p-10">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex items-center gap-2">
+            <span
+              className="text-2xl text-cyan"
+              style={{ filter: "drop-shadow(0 0 6px var(--c-cyan))" }}
+            >
+              ⬡
+            </span>
+            <span
+              className="text-lg font-bold tracking-widest text-cyan"
+              style={{ textShadow: "0 0 6px color-mix(in srgb, var(--c-cyan) 60%, transparent)" }}
+            >
+              WORKTRACE
+            </span>
+          </div>
+          <p className="text-xs text-muted">
+            Sign in with the same Google account you use in the extension.
           </p>
         </div>
 
@@ -22,7 +33,7 @@ export default function LoginPage() {
             <GoogleLoginButton clientId={clientId} />
           </>
         ) : (
-          <p className="text-sm text-red-600 dark:text-red-400">
+          <p className="text-xs text-pink">
             NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.
           </p>
         )}

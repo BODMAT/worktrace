@@ -20,9 +20,10 @@ export function LogoutButton() {
           router.refresh();
         }
       }}
-      className="flex h-10 items-center justify-center rounded-full border border-black/[.08] px-5 text-sm font-medium transition-colors hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-white/[.06]"
+      title="Sign out"
+      className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-base text-muted transition-colors hover:border-pink/40 hover:text-pink disabled:opacity-30"
     >
-      {pending ? "Signing out…" : "Sign out"}
+      {pending ? "…" : "⎋"}
     </button>
   );
 }
