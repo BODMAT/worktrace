@@ -12,9 +12,11 @@ export const CreateEventInput = EventUncheckedCreateInputObjectZodSchema
 export type CreateEventInput = z.infer<typeof CreateEventInput>;
 
 export const EventListFilters = z.object({
-  from: z.coerce.date().optional(),
-  to:   z.coerce.date().optional(),
-  tags: z
+  from:   z.coerce.date().optional(),
+  to:     z.coerce.date().optional(),
+  cursor: z.string().optional(),
+  limit:  z.coerce.number().int().min(1).max(100).optional().default(50),
+  tags:   z
     .string()
     .optional()
     .transform((s) =>

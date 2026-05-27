@@ -23,15 +23,20 @@ export async function createEventForUser(
   return prisma.event.create({ data: input });
 }
 
-const LIST_CAP = 200;
+export type EventsPage = {
+  events:     EventDTO[];
+  nextCursor: string | null;
+};
 
 export async function listEventsForUser(
-  userId: string,
+  userId:  string,
   filters: EventListFilters,
-): Promise<EventDTO[]> {
+): Promise<EventsPage> {
   const timestamp: Prisma.DateTimeFilter = {};
   if (filters.from) timestamp.gte = filters.from;
   if (filters.to)   timestamp.lte = filters.to;
+
+  const limit = filters.limit ?? 50;
 
   const rows = await prisma.event.findMany({
     where: {
@@ -39,17 +44,24 @@ export async function listEventsForUser(
       ...(Object.keys(timestamp).length ? { timestamp } : {}),
       ...(filters.tags.length ? { tags: { hasEvery: filters.tags } } : {}),
     },
-    orderBy: { timestamp: "desc" },
-    take:    LIST_CAP,
+    orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+    take:    limit + 1,
+    ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
   });
 
-  return rows.map((r) => ({
-    id:        r.id,
-    sessionId: r.sessionId,
-    url:       r.url,
-    title:     r.title,
-    content:   r.content,
-    tags:      r.tags,
-    timestamp: r.timestamp.toISOString(),
-  }));
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    events: page.map((r) => ({
+      id:        r.id,
+      sessionId: r.sessionId,
+      url:       r.url,
+      title:     r.title,
+      content:   r.content,
+      tags:      r.tags,
+      timestamp: r.timestamp.toISOString(),
+    })),
+    nextCursor: hasMore ? page[page.length - 1].id : null,
+  };
 }

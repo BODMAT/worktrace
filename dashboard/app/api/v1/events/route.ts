@@ -26,8 +26,8 @@ export const GET = withCors(async (req) => {
     return NextResponse.json({ error: z.treeifyError(parsed.error) }, { status: 400 });
   }
 
-  const events = await listEventsForUser(user.id, parsed.data);
-  return NextResponse.json({ events });
+  const page = await listEventsForUser(user.id, parsed.data);
+  return NextResponse.json(page);
 });
 
 export const POST = withCors(async (req) => {
