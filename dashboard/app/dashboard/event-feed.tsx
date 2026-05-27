@@ -106,7 +106,7 @@ function EmptyState({ onClear }: { onClear: () => void }) {
       <button
         type="button"
         onClick={onClear}
-        className="text-[10px] font-bold tracking-widest text-purple hover:text-cyan"
+        className="cursor-pointer text-[10px] font-bold tracking-widest text-purple transition-colors hover:text-cyan"
       >
         CLEAR FILTERS
       </button>
@@ -121,7 +121,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
       <button
         type="button"
         onClick={onRetry}
-        className="rounded border border-pink/40 px-3 py-1.5 text-[10px] font-bold tracking-widest text-pink hover:bg-pink/10"
+        className="cursor-pointer rounded border border-pink/40 px-3 py-1.5 text-[10px] font-bold tracking-widest text-pink transition-colors hover:bg-pink/10"
       >
         RETRY
       </button>

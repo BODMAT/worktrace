@@ -21,7 +21,8 @@ export function LogoutButton() {
         }
       }}
       title="Sign out"
-      className="flex h-7 w-7 items-center justify-center rounded border border-transparent text-base text-muted transition-colors hover:border-pink/40 hover:text-pink disabled:opacity-30"
+      aria-label="Sign out"
+      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-border bg-surface text-base text-muted transition-all hover:border-pink hover:bg-pink/10 hover:text-pink hover:shadow-[0_0_8px_color-mix(in_srgb,var(--c-pink)_30%,transparent)] disabled:cursor-not-allowed disabled:opacity-30"
     >
       {pending ? "…" : "⎋"}
     </button>

@@ -40,13 +40,13 @@ export function EventCard({ event }: { event: EventDTO }) {
   const time = useLocalizedTime(event.timestamp);
 
   return (
-    <article className="flex flex-col gap-2 rounded border border-border bg-surface p-3">
+    <article className="flex flex-col gap-2 rounded border border-border bg-surface p-3 transition-colors hover:border-purple/60">
       <div className="flex items-baseline justify-between gap-3">
         <a
           href={event.url}
           target="_blank"
           rel="noreferrer noopener"
-          className="truncate text-sm font-bold text-text hover:text-cyan"
+          className="cursor-pointer truncate text-sm font-bold text-text transition-colors hover:text-cyan"
           title={event.title}
         >
           {event.title}
