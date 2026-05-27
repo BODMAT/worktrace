@@ -15,3 +15,12 @@ export type EventStats = {
   byDay:   DayBucket[];
   topTags: TagCount[];
 };
+
+export type TopSession = {
+  id:              string;
+  startedAt:       string;
+  endedAt:         string | null;
+  totalSeconds:    number;
+  topHost:         string | null;
+  topHostSeconds:  number;
+};

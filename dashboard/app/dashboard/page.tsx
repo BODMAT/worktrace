@@ -8,11 +8,13 @@ import { redirect } from "next/navigation";
 import { SESSION_COOKIE } from "@/server/cookies";
 import { verifyJwt } from "@/server/jwt";
 import { getEventStatsForUser, listEventsForUser } from "@/server/events";
+import { getTopSessionsForUser } from "@/server/sessions";
 import {
   DEFAULT_FILTERS,
   PAGE_SIZE,
   eventsQueryKey,
   statsQueryKey,
+  topSessionsQueryKey,
 } from "./feed-shared";
 import { FeedRoot } from "./feed-root";
 
@@ -38,6 +40,10 @@ export default async function DashboardPage() {
     qc.prefetchQuery({
       queryKey: statsQueryKey(DEFAULT_FILTERS),
       queryFn:  () => getEventStatsForUser(userId, { tags: [] }),
+    }),
+    qc.prefetchQuery({
+      queryKey: topSessionsQueryKey,
+      queryFn:  () => getTopSessionsForUser(userId, 3),
     }),
   ]);
 

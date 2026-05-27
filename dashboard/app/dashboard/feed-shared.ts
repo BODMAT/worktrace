@@ -1,4 +1,4 @@
-import type { EventDTO, EventStats } from "@/types/event";
+import type { EventDTO, EventStats, TopSession } from "@/types/event";
 
 export type FeedFilters = {
   from: string;
@@ -20,6 +20,18 @@ export function eventsQueryKey(filters: FeedFilters) {
 
 export function statsQueryKey(filters: FeedFilters) {
   return ["event-stats", filters] as const;
+}
+
+export const topSessionsQueryKey = ["top-sessions"] as const;
+
+export async function fetchTopSessions(): Promise<TopSession[]> {
+  const res = await fetch("/api/v1/sessions/top", { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`Failed to load top sessions: ${res.status}`);
+  const body: unknown = await res.json();
+  if (!body || typeof body !== "object" || !Array.isArray((body as { sessions?: unknown }).sessions)) {
+    throw new Error("Malformed top-sessions response");
+  }
+  return (body as { sessions: TopSession[] }).sessions;
 }
 
 function applyFilters(sp: URLSearchParams, filters: FeedFilters): void {
