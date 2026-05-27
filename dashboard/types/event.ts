@@ -7,3 +7,11 @@ export type EventDTO = {
   tags:      string[];
   timestamp: string;
 };
+
+export type DayBucket = { date: string; count: number };
+export type TagCount  = { tag: string; count: number };
+
+export type EventStats = {
+  byDay:   DayBucket[];
+  topTags: TagCount[];
+};

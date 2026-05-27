@@ -7,9 +7,14 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE } from "@/server/cookies";
 import { verifyJwt } from "@/server/jwt";
-import { listEventsForUser } from "@/server/events";
-import { DEFAULT_FILTERS, PAGE_SIZE, eventsQueryKey } from "./feed-shared";
-import { EventFeed } from "./event-feed";
+import { getEventStatsForUser, listEventsForUser } from "@/server/events";
+import {
+  DEFAULT_FILTERS,
+  PAGE_SIZE,
+  eventsQueryKey,
+  statsQueryKey,
+} from "./feed-shared";
+import { FeedRoot } from "./feed-root";
 
 export default async function DashboardPage() {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
@@ -23,12 +28,18 @@ export default async function DashboardPage() {
   }
 
   const qc = new QueryClient();
-  await qc.prefetchInfiniteQuery({
-    queryKey: eventsQueryKey(DEFAULT_FILTERS),
-    queryFn:  () =>
-      listEventsForUser(userId, { tags: [], limit: PAGE_SIZE }),
-    initialPageParam: null as string | null,
-  });
+  await Promise.all([
+    qc.prefetchInfiniteQuery({
+      queryKey: eventsQueryKey(DEFAULT_FILTERS),
+      queryFn:  () =>
+        listEventsForUser(userId, { tags: [], limit: PAGE_SIZE }),
+      initialPageParam: null as string | null,
+    }),
+    qc.prefetchQuery({
+      queryKey: statsQueryKey(DEFAULT_FILTERS),
+      queryFn:  () => getEventStatsForUser(userId, { tags: [] }),
+    }),
+  ]);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-8">
@@ -37,7 +48,7 @@ export default async function DashboardPage() {
       </div>
 
       <HydrationBoundary state={dehydrate(qc)}>
-        <EventFeed />
+        <FeedRoot />
       </HydrationBoundary>
     </div>
   );

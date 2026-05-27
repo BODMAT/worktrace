@@ -1,19 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { EventCard } from "./event-card";
-import { EventFilters } from "./event-filters";
 import {
-  DEFAULT_FILTERS,
   eventsQueryKey,
   fetchEventsPage,
   type FeedFilters,
 } from "./feed-shared";
 
-export function EventFeed() {
-  const [filters, setFilters] = useState<FeedFilters>(DEFAULT_FILTERS);
+type Props = {
+  filters:        FeedFilters;
+  onClearFilters: () => void;
+};
 
+export function EventFeed({ filters, onClearFilters }: Props) {
   const {
     data,
     isLoading,
@@ -55,41 +56,33 @@ export function EventFeed() {
     return () => io.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  if (isLoading) return <FeedSkeleton />;
+  if (isError)   return <ErrorState onRetry={() => refetch()} />;
+  if (events.length === 0) return <EmptyState onClear={onClearFilters} />;
+
   return (
-    <div className="flex flex-col gap-4">
-      <EventFilters value={filters} onChange={setFilters} />
+    <>
+      <ul className="flex flex-col gap-3" aria-busy={isFetching}>
+        {events.map((event) => (
+          <li key={event.id}>
+            <EventCard event={event} />
+          </li>
+        ))}
+      </ul>
 
-      {isLoading ? (
-        <FeedSkeleton />
-      ) : isError ? (
-        <ErrorState onRetry={() => refetch()} />
-      ) : events.length === 0 ? (
-        <EmptyState onClear={() => setFilters(DEFAULT_FILTERS)} />
+      {hasNextPage ? (
+        <div
+          ref={sentinelRef}
+          className="flex justify-center py-4 text-[10px] tracking-widest text-muted"
+        >
+          {isFetchingNextPage ? "LOADING…" : "SCROLL TO LOAD MORE"}
+        </div>
       ) : (
-        <>
-          <ul className="flex flex-col gap-3" aria-busy={isFetching}>
-            {events.map((event) => (
-              <li key={event.id}>
-                <EventCard event={event} />
-              </li>
-            ))}
-          </ul>
-
-          {hasNextPage ? (
-            <div
-              ref={sentinelRef}
-              className="flex justify-center py-4 text-[10px] tracking-widest text-muted"
-            >
-              {isFetchingNextPage ? "LOADING…" : "SCROLL TO LOAD MORE"}
-            </div>
-          ) : (
-            <div className="flex justify-center py-4 text-[10px] tracking-widest text-muted">
-              END OF FEED
-            </div>
-          )}
-        </>
+        <div className="flex justify-center py-4 text-[10px] tracking-widest text-muted">
+          END OF FEED
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
