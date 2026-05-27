@@ -32,6 +32,7 @@ export async function endSessionForUser(userId: string, sessionId: string) {
 // Caps a single event's "attention" at 30 min — prevents long idle gaps inflating totals.
 // The final event of a session has no successor → 0s contribution, so total = last − first timestamp.
 const EVENT_DURATION_CAP_S = 1800;
+const RECENT_WINDOW_DAYS   = 90;
 
 export async function getTopSessionsForUser(
   userId: string,
@@ -64,6 +65,7 @@ export async function getTopSessionsForUser(
       FROM "Event" e
       JOIN "Session" s ON s.id = e."sessionId"
       WHERE s."userId" = ${userId}
+        AND e."timestamp" >= NOW() - (${RECENT_WINDOW_DAYS} || ' days')::interval
     ),
     host_totals AS (
       SELECT

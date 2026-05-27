@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { EventDTO, EventStats, TopSession } from "@/types/event";
 
 export type FeedFilters = {
@@ -24,15 +25,40 @@ export function statsQueryKey(filters: FeedFilters) {
 
 export const topSessionsQueryKey = ["top-sessions"] as const;
 
-export async function fetchTopSessions(): Promise<TopSession[]> {
-  const res = await fetch("/api/v1/sessions/top", { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`Failed to load top sessions: ${res.status}`);
-  const body: unknown = await res.json();
-  if (!body || typeof body !== "object" || !Array.isArray((body as { sessions?: unknown }).sessions)) {
-    throw new Error("Malformed top-sessions response");
-  }
-  return (body as { sessions: TopSession[] }).sessions;
-}
+// ─── Response schemas ─────────────────────────────────────────────────────────
+
+const EventDtoSchema: z.ZodType<EventDTO> = z.object({
+  id:        z.string(),
+  sessionId: z.string(),
+  url:       z.string(),
+  title:     z.string(),
+  content:   z.string().nullable(),
+  tags:      z.array(z.string()),
+  timestamp: z.string(),
+});
+
+const EventsPageSchema: z.ZodType<EventsPage> = z.object({
+  events:     z.array(EventDtoSchema),
+  nextCursor: z.string().nullable(),
+});
+
+const EventStatsSchema: z.ZodType<EventStats> = z.object({
+  byDay:   z.array(z.object({ date: z.string(), count: z.number() })),
+  topTags: z.array(z.object({ tag:  z.string(), count: z.number() })),
+});
+
+const TopSessionSchema: z.ZodType<TopSession> = z.object({
+  id:             z.string(),
+  startedAt:      z.string(),
+  endedAt:        z.string().nullable(),
+  totalSeconds:   z.number(),
+  topHost:        z.string().nullable(),
+  topHostSeconds: z.number(),
+});
+
+const TopSessionsResponse = z.object({ sessions: z.array(TopSessionSchema) });
+
+// ─── URL builders ─────────────────────────────────────────────────────────────
 
 function applyFilters(sp: URLSearchParams, filters: FeedFilters): void {
   if (filters.from) sp.set("from", filters.from);
@@ -55,33 +81,26 @@ export function buildStatsUrl(filters: FeedFilters): string {
   return qs ? `/api/v1/events/stats?${qs}` : "/api/v1/events/stats";
 }
 
+// ─── Fetchers ─────────────────────────────────────────────────────────────────
+
+async function getJson(url: string): Promise<unknown> {
+  const res = await fetch(url, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`Request failed: ${url} → ${res.status}`);
+  return res.json();
+}
+
 export async function fetchEventsPage(
   filters: FeedFilters,
   cursor:  string | null,
 ): Promise<EventsPage> {
-  const res = await fetch(buildEventsUrl(filters, cursor), { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`Failed to load events: ${res.status}`);
-  const body: unknown = await res.json();
-  if (!isEventsPage(body)) throw new Error("Malformed response");
-  return body;
+  return EventsPageSchema.parse(await getJson(buildEventsUrl(filters, cursor)));
 }
 
 export async function fetchEventStats(filters: FeedFilters): Promise<EventStats> {
-  const res = await fetch(buildStatsUrl(filters), { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`Failed to load stats: ${res.status}`);
-  const body: unknown = await res.json();
-  if (!isEventStats(body)) throw new Error("Malformed stats response");
-  return body;
+  return EventStatsSchema.parse(await getJson(buildStatsUrl(filters)));
 }
 
-function isEventsPage(v: unknown): v is EventsPage {
-  if (!v || typeof v !== "object") return false;
-  const r = v as Record<string, unknown>;
-  return Array.isArray(r["events"]) && (r["nextCursor"] === null || typeof r["nextCursor"] === "string");
-}
-
-function isEventStats(v: unknown): v is EventStats {
-  if (!v || typeof v !== "object") return false;
-  const r = v as Record<string, unknown>;
-  return Array.isArray(r["byDay"]) && Array.isArray(r["topTags"]);
+export async function fetchTopSessions(): Promise<TopSession[]> {
+  const parsed = TopSessionsResponse.parse(await getJson("/api/v1/sessions/top"));
+  return parsed.sessions;
 }

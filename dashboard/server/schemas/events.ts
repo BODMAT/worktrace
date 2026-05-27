@@ -25,7 +25,7 @@ export const EventListFilters = z.object({
   from:   z.coerce.date().optional(),
   to:     z.coerce.date().optional(),
   cursor: z.string().optional(),
-  limit:  z.coerce.number().int().min(1).max(100).optional().default(50),
+  limit:  z.coerce.number().int().min(1).max(100).optional().default(30),
   tags:   tagsSchema,
 });
 

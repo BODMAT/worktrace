@@ -16,6 +16,7 @@ export function FeedRoot() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Charts filters={filters} />
+        {/* Top sessions intentionally ignores feed filters: it is an all-time leaderboard (90-day window). */}
         <TopSessions />
       </div>
 
