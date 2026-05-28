@@ -1,4 +1,6 @@
 import { LogoutButton } from "./logout-button";
+import { HeaderNav } from "./header-nav";
+import { MobileNav } from "./mobile-nav";
 
 type Props = {
   email:   string;
@@ -12,19 +14,22 @@ export function AppHeader({ email, name, picture }: Props) {
 
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-bg/95 px-6 py-3 backdrop-blur">
-      <div className="flex items-center gap-2">
-        <span
-          className="text-xl text-cyan"
-          style={{ filter: "drop-shadow(0 0 4px var(--c-cyan))" }}
-        >
-          ⬡
-        </span>
-        <span
-          className="text-sm font-bold tracking-widest text-cyan"
-          style={{ textShadow: "0 0 6px color-mix(in srgb, var(--c-cyan) 60%, transparent)" }}
-        >
-          WORKTRACE
-        </span>
+      <div className="flex items-center gap-8">
+        <div className="flex items-center gap-2">
+          <span
+            className="text-xl text-cyan"
+            style={{ filter: "drop-shadow(0 0 4px var(--c-cyan))" }}
+          >
+            ⬡
+          </span>
+          <span
+            className="text-sm font-bold tracking-widest text-cyan"
+            style={{ textShadow: "0 0 6px color-mix(in srgb, var(--c-cyan) 60%, transparent)" }}
+          >
+            WORKTRACE
+          </span>
+        </div>
+        <HeaderNav />
       </div>
 
       <div className="flex items-center gap-3">
@@ -48,6 +53,7 @@ export function AppHeader({ email, name, picture }: Props) {
           {displayName}
         </span>
         <LogoutButton />
+        <MobileNav />
       </div>
     </header>
   );
