@@ -31,13 +31,18 @@ export async function getTopTracks(
   from:   Date,
   to:     Date,
 ): Promise<TopTrack[]> {
-  const rows = await prisma.track.findMany({
-    where:   { session: { userId }, capturedAt: { gte: from, lte: to } },
-    select:  { artist: true, title: true, listenedMs: true },
-    orderBy: { listenedMs: "desc" },
-    take:    MAX_TOP_TRACKS,
+  const rows = await prisma.track.groupBy({
+    by:    ["artist", "title"],
+    where: { session: { userId }, capturedAt: { gte: from, lte: to } },
+    _sum:  { listenedMs: true },
+    orderBy: { _sum: { listenedMs: "desc" } },
+    take: MAX_TOP_TRACKS,
   });
-  return rows;
+  return rows.map((r) => ({
+    artist:     r.artist,
+    title:      r.title,
+    listenedMs: r._sum.listenedMs ?? 0,
+  }));
 }
 
 export async function getMusicProductivity(
