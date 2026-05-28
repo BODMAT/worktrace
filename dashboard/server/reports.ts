@@ -1,8 +1,8 @@
 import type { GenerateReportInput } from "./schemas/reports";
 import type { GenerateReportResponse } from "@/types/report";
-import { prisma } from "./db";
 import { buildReportContext } from "./report-context";
 import { getDecryptedGroqApiKey } from "./user-settings";
+import { resolveRange } from "./range";
 import {
   groqChat,
   getDefaultModel,
@@ -38,46 +38,7 @@ export class MissingApiKeyError extends Error {
   }
 }
 
-export type ResolvedRange = { from: Date; to: Date; label: string };
-
-export async function resolveRange(
-  input:  GenerateReportInput,
-  userId: string,
-): Promise<ResolvedRange> {
-  const now = new Date();
-
-  switch (input.range) {
-    case "today":
-      return { from: startOfDay(now), to: now, label: "today" };
-
-    case "yesterday": {
-      const y = shiftDays(now, -1);
-      return { from: startOfDay(y), to: endOfDay(y), label: "yesterday" };
-    }
-
-    case "last_7d":
-      return { from: shiftDays(now, -7), to: now, label: "last 7 days" };
-
-    case "last_30d":
-      return { from: shiftDays(now, -30), to: now, label: "last 30 days" };
-
-    case "all_time": {
-      const first = await prisma.session.findFirst({
-        where:   { userId },
-        select:  { startedAt: true },
-        orderBy: { startedAt: "asc" },
-      });
-      const from = first?.startedAt ?? shiftDays(now, -1);
-      return { from, to: now, label: "all time" };
-    }
-
-    case "custom":
-      if (!input.from || !input.to) {
-        throw new Error("custom range requires both from and to");
-      }
-      return { from: input.from, to: input.to, label: "custom range" };
-  }
-}
+export type { ResolvedRange } from "./range";
 
 export async function generateReport(
   userId: string,
@@ -108,24 +69,6 @@ export async function generateReport(
     estimatedInputTokens: ctx.estimatedTokens,
     model:                getDefaultModel(),
   };
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setUTCHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setUTCHours(23, 59, 59, 999);
-  return x;
-}
-
-function shiftDays(d: Date, delta: number): Date {
-  const x = new Date(d);
-  x.setUTCDate(x.getUTCDate() + delta);
-  return x;
 }
 
 export { GroqAuthError, GroqContextLimitError, GroqTimeoutError, GroqUpstreamError };
