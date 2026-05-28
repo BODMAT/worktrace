@@ -109,7 +109,7 @@ export function ReportForm() {
             </button>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {PRESETS.map((p) => (
             <button
               key={p.value}
@@ -126,6 +126,35 @@ export function ReportForm() {
               {p.label}
             </button>
           ))}
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {status.kind === "success" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setStatus({ kind: "idle" })}
+                  className="cursor-pointer rounded border border-muted px-3 py-1.5 text-[10px] font-bold tracking-widest text-muted transition-colors hover:border-pink hover:text-pink"
+                >
+                  NEW REPORT
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadMarkdown(status.result.markdown, status.result.range.label)}
+                  className="cursor-pointer rounded border border-cyan px-3 py-1.5 text-[10px] font-bold tracking-widest text-cyan transition-colors hover:bg-cyan/10"
+                >
+                  DOWNLOAD .MD
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={isBusy}
+              className="cursor-pointer rounded border border-purple bg-purple/10 px-4 py-1.5 text-[10px] font-bold tracking-widest text-purple transition-colors hover:bg-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isBusy ? "GENERATING…" : "GENERATE REPORT"}
+            </button>
+          </div>
         </div>
 
         {isCustom ? (
@@ -153,35 +182,6 @@ export function ReportForm() {
             </CustomField>
           </div>
         ) : null}
-
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={isBusy}
-            className="cursor-pointer rounded border border-purple bg-purple/10 px-4 py-2 text-[11px] font-bold tracking-widest text-purple transition-colors hover:bg-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isBusy ? "GENERATING…" : "▶ GENERATE REPORT"}
-          </button>
-          {status.kind === "success" ? (
-            <>
-              <button
-                type="button"
-                onClick={() => downloadMarkdown(status.result.markdown, status.result.range.label)}
-                className="cursor-pointer rounded border border-cyan px-3 py-2 text-[10px] font-bold tracking-widest text-cyan transition-colors hover:bg-cyan/10"
-              >
-                ↓ DOWNLOAD .MD
-              </button>
-              <button
-                type="button"
-                onClick={() => setStatus({ kind: "idle" })}
-                className="cursor-pointer rounded border border-muted px-3 py-2 text-[10px] font-bold tracking-widest text-muted transition-colors hover:border-pink hover:text-pink"
-              >
-                🔁 NEW REPORT
-              </button>
-            </>
-          ) : null}
-        </div>
       </section>
 
       {status.kind === "loading" ? <LoadingPanel /> : null}
