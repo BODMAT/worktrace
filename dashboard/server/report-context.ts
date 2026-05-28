@@ -1,6 +1,6 @@
-import { Prisma } from "@/generated/prisma/client";
 import type { ContextLevel } from "@/types/report";
 import { prisma } from "./db";
+import { getMusicProductivity } from "./music";
 
 // Groq free tier: 12,000 tokens/request. Reserve ~500 for system prompt + ~2,000 for response.
 const INPUT_TOKEN_BUDGET = 7_500;
@@ -9,8 +9,6 @@ const MAX_HIGHLIGHTS     = 20;
 const MAX_SESSIONS_SHOWN = 20;
 const MAX_TOP_DOMAINS    = 10;
 const MAX_TOP_TAGS       = 15;
-const MAX_TOP_TRACKS     = 10;
-const MAX_TOP_ARTISTS    = 10;
 const CONTENT_PREVIEW    = 300;
 
 type RawEvent = {
@@ -35,14 +33,6 @@ type RawTrack = {
   listenedMs: number;
   capturedAt: Date;
   endedAt:    Date | null;
-};
-
-type MusicProductivity = {
-  artist:  string;
-  title:   string;
-  minutes: number;
-  events:  number;
-  perMin:  number;
 };
 
 export type ReportContext = {
@@ -107,49 +97,7 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
-async function getMusicProductivity(
-  userId: string,
-  from:   Date,
-  to:     Date,
-): Promise<MusicProductivity[]> {
-  return prisma.$queryRaw<MusicProductivity[]>(Prisma.sql`
-    WITH track_windows AS (
-      SELECT
-        t.artist,
-        t.title,
-        t."listenedMs",
-        t."capturedAt",
-        COALESCE(t."endedAt", NOW()) AS effective_end
-      FROM "Track" t
-      JOIN "Session" s ON s.id = t."sessionId"
-      WHERE s."userId" = ${userId}
-        AND t."capturedAt" >= ${from}
-        AND t."capturedAt" <= ${to}
-        AND t."listenedMs" >= 60000
-    ),
-    user_events AS (
-      SELECT e."timestamp"
-      FROM "Event" e
-      JOIN "Session" s ON s.id = e."sessionId"
-      WHERE s."userId" = ${userId}
-        AND e."timestamp" >= ${from}
-        AND e."timestamp" <= ${to}
-    )
-    SELECT
-      tw.artist,
-      tw.title,
-      (tw."listenedMs" / 60000.0)::float                                     AS minutes,
-      COUNT(ue."timestamp")::int                                             AS events,
-      (COUNT(ue."timestamp")::float / (tw."listenedMs" / 60000.0))::float    AS "perMin"
-    FROM track_windows tw
-    LEFT JOIN user_events ue
-      ON ue."timestamp" >= tw."capturedAt"
-     AND ue."timestamp" <= tw.effective_end
-    GROUP BY tw.artist, tw.title, tw."listenedMs"
-    ORDER BY "perMin" DESC NULLS LAST
-    LIMIT ${MAX_TOP_TRACKS}
-  `);
-}
+import type { ProductivityRow } from "@/types/music-stats";
 
 type RenderArgs = {
   level:     ContextLevel;
@@ -159,7 +107,7 @@ type RenderArgs = {
   events:    RawEvent[];
   sessions:  RawSession[];
   tracks:    RawTrack[];
-  musicProd: MusicProductivity[];
+  musicProd: ProductivityRow[];
 };
 
 function renderContext(a: RenderArgs): string {
@@ -267,7 +215,9 @@ function renderContext(a: RenderArgs): string {
   return out.join("\n").trimEnd();
 }
 
-function renderMusicSection(tracks: RawTrack[], prod: MusicProductivity[]): string[] {
+const MAX_TOP_ARTISTS_REPORT = 10;
+
+function renderMusicSection(tracks: RawTrack[], prod: ProductivityRow[]): string[] {
   const out: string[] = [];
   out.push("# Music");
 
@@ -277,7 +227,7 @@ function renderMusicSection(tracks: RawTrack[], prod: MusicProductivity[]): stri
   }
   const topArtists = [...byArtist.entries()]
     .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_TOP_ARTISTS);
+    .slice(0, MAX_TOP_ARTISTS_REPORT);
 
   out.push("Top artists by listening time:");
   for (const [artist, ms] of topArtists) {
