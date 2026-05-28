@@ -16,6 +16,13 @@ export class GroqUpstreamError extends Error {
   }
 }
 
+export class GroqContextLimitError extends Error {
+  constructor() {
+    super("Report context too large for the model. Try a shorter date range.");
+    this.name = "GroqContextLimitError";
+  }
+}
+
 export class GroqTimeoutError extends Error {
   constructor() {
     super("Groq request timed out");
@@ -69,6 +76,7 @@ export async function groqChat(input: GroqChatInput): Promise<string> {
   }
 
   if (res.status === 401 || res.status === 403) throw new GroqAuthError();
+  if (res.status === 413) throw new GroqContextLimitError();
   if (!res.ok) {
     const body = await res.text();
     console.error("[groq] non-ok response", res.status, body);

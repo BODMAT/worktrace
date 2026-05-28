@@ -2,7 +2,8 @@ import { Prisma } from "@/generated/prisma/client";
 import type { ContextLevel } from "@/types/report";
 import { prisma } from "./db";
 
-const INPUT_TOKEN_BUDGET = 30_000;
+// Groq free tier: 12,000 tokens/request. Reserve ~500 for system prompt + ~2,000 for response.
+const INPUT_TOKEN_BUDGET = 7_500;
 const CHARS_PER_TOKEN    = 4;
 const MAX_HIGHLIGHTS     = 20;
 const MAX_SESSIONS_SHOWN = 20;

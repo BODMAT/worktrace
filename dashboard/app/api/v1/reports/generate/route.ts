@@ -7,6 +7,7 @@ import {
   generateReport,
   MissingApiKeyError,
   GroqAuthError,
+  GroqContextLimitError,
   GroqTimeoutError,
   GroqUpstreamError,
 } from "@/server/reports";
@@ -43,6 +44,9 @@ export const POST = withCors(async (req) => {
         { error: "No Groq API key configured. Add your own via the API KEY button." },
         { status: 503 },
       );
+    }
+    if (err instanceof GroqContextLimitError) {
+      return NextResponse.json({ error: err.message }, { status: 422 });
     }
     if (err instanceof GroqAuthError) {
       return NextResponse.json(

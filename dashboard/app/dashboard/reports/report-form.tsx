@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { GenerateReportResponse, RangePreset } from "@/types/report";
-import { generateReport, type GenerateInput } from "./reports-client";
+import type { UserSettingsView } from "@/server/user-settings";
+import {
+  generateReport,
+  getApiKeyStatus,
+  type GenerateInput,
+} from "./reports-client";
 import { MarkdownView } from "./markdown-view";
+import { ApiKeyModal } from "./api-key-modal";
 
 const PRESETS: { value: RangePreset; label: string }[] = [
   { value: "today",     label: "TODAY"        },
@@ -41,10 +47,20 @@ function downloadMarkdown(markdown: string, rangeLabel: string): void {
 }
 
 export function ReportForm() {
-  const [range,  setRange]  = useState<RangePreset>("last_7d");
-  const [from,   setFrom]   = useState<string>("");
-  const [to,     setTo]     = useState<string>(todayISO());
-  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [range,     setRange]     = useState<RangePreset>("last_7d");
+  const [from,      setFrom]      = useState<string>("");
+  const [to,        setTo]        = useState<string>(todayISO());
+  const [status,    setStatus]    = useState<Status>({ kind: "idle" });
+  const [apiKey,    setApiKey]    = useState<UserSettingsView | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getApiKeyStatus()
+      .then((v) => { if (!cancelled) setApiKey(v); })
+      .catch(() => { if (!cancelled) setApiKey({ hasGroqApiKey: false, last4: null }); });
+    return () => { cancelled = true; };
+  }, []);
 
   const isCustom = range === "custom";
   const isBusy   = status.kind === "loading";
@@ -74,8 +90,24 @@ export function ReportForm() {
   return (
     <div className="flex flex-col gap-4">
       <section className="rounded border border-border bg-surface p-4">
-        <div className="mb-3 flex items-baseline justify-between">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <span className="text-[10px] font-bold tracking-widest text-muted">RANGE</span>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] tracking-widest text-muted">
+              {apiKey === null
+                ? "…"
+                : apiKey.hasGroqApiKey
+                  ? <>USING YOUR KEY (••••{apiKey.last4 ?? "????"})</>
+                  : "USING SHARED DEFAULT KEY"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="cursor-pointer rounded border border-border px-2.5 py-1 text-[10px] font-bold tracking-widest text-muted transition-colors hover:border-purple hover:text-text"
+            >
+              ⚙ API KEY
+            </button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {PRESETS.map((p) => (
@@ -155,6 +187,14 @@ export function ReportForm() {
       {status.kind === "loading" ? <LoadingPanel /> : null}
       {status.kind === "error"   ? <ErrorPanel message={status.message} onRetry={handleGenerate} /> : null}
       {status.kind === "success" ? <ResultPanel result={status.result} /> : null}
+
+      {modalOpen && apiKey ? (
+        <ApiKeyModal
+          status={apiKey}
+          onClose={() => setModalOpen(false)}
+          onSaved={(next) => setApiKey(next)}
+        />
+      ) : null}
     </div>
   );
 }

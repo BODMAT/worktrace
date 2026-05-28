@@ -7,6 +7,7 @@ import {
   groqChat,
   getDefaultModel,
   GroqAuthError,
+  GroqContextLimitError,
   GroqTimeoutError,
   GroqUpstreamError,
 } from "./groq";
@@ -127,4 +128,4 @@ function shiftDays(d: Date, delta: number): Date {
   return x;
 }
 
-export { GroqAuthError, GroqTimeoutError, GroqUpstreamError };
+export { GroqAuthError, GroqContextLimitError, GroqTimeoutError, GroqUpstreamError };
