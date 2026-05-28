@@ -2,8 +2,8 @@ import { Prisma } from "@/generated/prisma/client";
 import type { TopArtist, TopTrack, ProductivityRow, HourBucket } from "@/types/music-stats";
 import { prisma } from "./db";
 
-const MAX_TOP_ARTISTS = 15;
-const MAX_TOP_TRACKS  = 20;
+const MAX_TOP_ARTISTS  = 15;
+const MAX_TOP_TRACKS   = 20;
 const MAX_PRODUCTIVITY = 10;
 
 export async function getTopArtists(
@@ -11,19 +11,21 @@ export async function getTopArtists(
   from:   Date,
   to:     Date,
 ): Promise<TopArtist[]> {
-  const rows = await prisma.track.groupBy({
-    by:    ["artist"],
-    where: { session: { userId }, capturedAt: { gte: from, lte: to } },
-    _sum:  { listenedMs: true },
-    _count: { title: true },
-    orderBy: { _sum: { listenedMs: "desc" } },
-    take: MAX_TOP_ARTISTS,
-  });
-  return rows.map((r) => ({
-    artist:     r.artist,
-    listenedMs: r._sum.listenedMs ?? 0,
-    trackCount: r._count.title,
-  }));
+  // COUNT(DISTINCT title) requires raw SQL — Prisma groupBy only supports COUNT(field) on all rows
+  return prisma.$queryRaw<TopArtist[]>(Prisma.sql`
+    SELECT
+      t.artist,
+      SUM(t."listenedMs")::int          AS "listenedMs",
+      COUNT(DISTINCT t.title)::int      AS "trackCount"
+    FROM "Track" t
+    JOIN "Session" s ON s.id = t."sessionId"
+    WHERE s."userId" = ${userId}
+      AND t."capturedAt" >= ${from}
+      AND t."capturedAt" <= ${to}
+    GROUP BY t.artist
+    ORDER BY SUM(t."listenedMs") DESC
+    LIMIT ${MAX_TOP_ARTISTS}
+  `);
 }
 
 export async function getTopTracks(
@@ -57,7 +59,11 @@ export async function getMusicProductivity(
         t.title,
         t."listenedMs",
         t."capturedAt",
-        COALESCE(t."endedAt", NOW()) AS effective_end
+        -- use listenedMs as duration fallback when endedAt was not recorded
+        COALESCE(
+          t."endedAt",
+          t."capturedAt" + make_interval(secs => t."listenedMs" / 1000.0)
+        ) AS effective_end
       FROM "Track" t
       JOIN "Session" s ON s.id = t."sessionId"
       WHERE s."userId" = ${userId}
@@ -76,14 +82,14 @@ export async function getMusicProductivity(
     SELECT
       tw.artist,
       tw.title,
-      (tw."listenedMs" / 60000.0)::float                                   AS minutes,
-      COUNT(ue."timestamp")::int                                           AS events,
-      (COUNT(ue."timestamp")::float / (tw."listenedMs" / 60000.0))::float  AS "perMin"
+      (SUM(tw."listenedMs") / 60000.0)::float                                         AS minutes,
+      COUNT(ue."timestamp")::int                                                       AS events,
+      (COUNT(ue."timestamp")::float / NULLIF(SUM(tw."listenedMs") / 60000.0, 0))::float AS "perMin"
     FROM track_windows tw
     LEFT JOIN user_events ue
       ON ue."timestamp" >= tw."capturedAt"
      AND ue."timestamp" <= tw.effective_end
-    GROUP BY tw.artist, tw.title, tw."listenedMs"
+    GROUP BY tw.artist, tw.title
     ORDER BY "perMin" DESC NULLS LAST
     LIMIT ${MAX_PRODUCTIVITY}
   `);
@@ -138,21 +144,26 @@ export async function getMusicTotals(
   from:   Date,
   to:     Date,
 ): Promise<{ totalListenedMs: number; totalArtists: number; totalTracks: number }> {
-  const [agg, artistCount] = await Promise.all([
+  const [agg, uniqueArtists, uniqueTracks] = await Promise.all([
     prisma.track.aggregate({
       where: { session: { userId }, capturedAt: { gte: from, lte: to } },
-      _sum:   { listenedMs: true },
-      _count: { id: true },
+      _sum:  { listenedMs: true },
     }),
+    // distinct artist count
     prisma.track.findMany({
-      where:   { session: { userId }, capturedAt: { gte: from, lte: to } },
-      select:  { artist: true },
+      where:    { session: { userId }, capturedAt: { gte: from, lte: to } },
+      select:   { artist: true },
       distinct: ["artist"],
+    }),
+    // distinct (artist, title) pair count = unique songs
+    prisma.track.groupBy({
+      by:    ["artist", "title"],
+      where: { session: { userId }, capturedAt: { gte: from, lte: to } },
     }),
   ]);
   return {
-    totalListenedMs: agg._sum.listenedMs  ?? 0,
-    totalTracks:     agg._count.id,
-    totalArtists:    artistCount.length,
+    totalListenedMs: agg._sum.listenedMs ?? 0,
+    totalArtists:    uniqueArtists.length,
+    totalTracks:     uniqueTracks.length,
   };
 }

@@ -29,7 +29,7 @@
 - `artist`, `title` — ідентифікація
 - `listenedMs` — накопичений час прослуховування (PATCH від розширення)
 - `capturedAt` — bucket для годинного графіку
-- `endedAt` — для JOIN-вікна в productivity (COALESCE endedAt, NOW())
+- `endedAt` — для JOIN-вікна в productivity; fallback якщо null → `capturedAt + make_interval(secs => listenedMs/1000)` (щоб не захоплювати події до NOW())
 - `sessionId → Session.userId` — фільтр по власнику
 
 ---
@@ -97,11 +97,11 @@ type MusicStats = {
 
 | Функція | SQL-підхід |
 |---|---|
-| `getTopArtists(userId, from, to)` | `GROUP BY artist`, `SUM(listenedMs)`, `COUNT(title)` на Track |
-| `getTopTracks(userId, from, to)` | `ORDER BY listenedMs DESC LIMIT 20` |
-| `getMusicProductivity(userId, from, to)` | **Перенести з `report-context.ts`** — той самий `$queryRaw` JOIN, імпортувати назад у report-context |
+| `getTopArtists(userId, from, to)` | `$queryRaw` — `GROUP BY artist`, `SUM(listenedMs)`, **`COUNT(DISTINCT title)`** (Prisma groupBy не підтримує DISTINCT count) |
+| `getTopTracks(userId, from, to)` | `groupBy [artist, title]`, `SUM(listenedMs) DESC LIMIT 20` — агрегація по унікальних піснях |
+| `getMusicProductivity(userId, from, to)` | `$queryRaw` LEFT JOIN track windows × events; `GROUP BY artist, title` + `SUM(listenedMs)`; fallback для `endedAt = null` → `capturedAt + make_interval(secs => listenedMs/1000)` |
 | `getHourlyPattern(userId, from, to)` | Два окремих Prisma-запити (треки per hour + events per hour), merge у JS для заповнення 0–23 |
-| `getMusicTotals(userId, from, to)` | `COUNT(DISTINCT artist)`, `COUNT(*)`, `SUM(listenedMs)` в одному запиті |
+| `getMusicTotals(userId, from, to)` | `SUM(listenedMs)` + distinct artists (findMany distinct) + **distinct (artist, title) pairs** (groupBy) — всі три окремо |
 
 `getHourlyPattern` — єдина нетривіальна функція: два `$queryRaw` з `EXTRACT(HOUR FROM ...)`, результати мержаться в JS-масиві 24 елементів.
 
@@ -177,7 +177,8 @@ Empty state (немає треків у діапазоні): "NO MUSIC DATA FOR 
 | 3 | `feat(music): server module, types, and GET /api/v1/music/stats route` | `types/music-stats.ts`, `server/music.ts`, `app/api/v1/music/stats/route.ts`, `getMusicProductivity` перенесено |
 | 4 | `feat(music): /dashboard/music page with Chart.js charts` | `music/page.tsx`, `music-client.tsx`, три chart-компоненти |
 | 5 | `feat(nav): add MUSIC to header nav` | `header-nav.tsx`, `mobile-nav.tsx` |
-| 6 | `fix(music): post-review fixes` | буфер для правок після self-review |
+| 6 | `fix(music): deduplicate top tracks (groupBy)` | `getTopTracks` → `groupBy [artist, title]` + `SUM(listenedMs)` |
+| 7 | `fix(music): correct logic in music queries` | `getTopArtists` → `COUNT(DISTINCT title)` via raw SQL; `getMusicProductivity` → `GROUP BY artist, title` + `SUM` + правильний `endedAt` fallback; `getMusicTotals.totalTracks` → унікальні (artist, title) пари |
 
 ---
 
@@ -186,6 +187,9 @@ Empty state (немає треків у діапазоні): "NO MUSIC DATA FOR 
 - **Chart.js замість D3** — погоджено з Tech Lead. Chart.js вже встановлено і використовується на фіді; єдиний інструмент для графіків у проєкті — менше cognitive overhead.
 - **Виокремлення `resolveRange`** — дрібний рефактор, що усуває дублювання і потенційний circular import.
 - **Hourly chart = два Prisma-запити + JS merge** — уникаємо `generate_series` (PostgreSQL-розширення, що не гарантується) і зберігаємо читабельність коду.
+- **`COUNT(DISTINCT title)` через `$queryRaw`** — Prisma `groupBy` підтримує лише `_count: { field }` (all rows), DISTINCT count потребує raw SQL.
+- **`getMusicProductivity` GROUP BY по `(artist, title)`, не по `(artist, title, listenedMs)`** — трек `@@unique([sessionId, artist, title])` означає по одному рядку на трек на сесію; без агрегації той самий трек з'являвся б окремим рядком за кожну сесію.
+- **`endedAt` null → `capturedAt + make_interval`** — fallback на `NOW()` розтягував JOIN-вікно до поточного моменту і захоплював усі наступні події як "під час цього треку".
 - **`getMusicProductivity` → `server/music.ts`** — це бізнес-логіка про музику, не про рендеринг звіту. `report-context.ts` імпортує її звідти.
 - **TanStack Query на клієнті** — той самий патерн що й фід: `page.tsx` — Server Component з auth guard, `MusicClient` — "use client" з фільтрами і даними.
 - **Без нових Prisma-моделей/міграцій** — вся аналітика виводиться з існуючих даних.
