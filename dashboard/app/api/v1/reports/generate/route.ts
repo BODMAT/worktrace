@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { requireUser, UnauthorizedError } from "@/server/jwt";
 import { withCors, corsPreflight } from "@/server/cors";
 import { GenerateReportInput } from "@/server/schemas/reports";
@@ -8,9 +7,11 @@ import {
   MissingApiKeyError,
   GroqAuthError,
   GroqContextLimitError,
+  GroqRateLimitError,
   GroqTimeoutError,
   GroqUpstreamError,
 } from "@/server/reports";
+import { apiError } from "@/server/api-error";
 
 export const POST = withCors(async (req) => {
   let user;
@@ -18,7 +19,7 @@ export const POST = withCors(async (req) => {
     user = requireUser(req);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      return NextResponse.json({ error: err.message }, { status: 401 });
+      return apiError("UNAUTHORIZED", err.message, 401);
     }
     throw err;
   }
@@ -27,12 +28,12 @@ export const POST = withCors(async (req) => {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return apiError("VALIDATION_ERROR", "Invalid JSON body", 400);
   }
 
   const parsed = GenerateReportInput.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: z.treeifyError(parsed.error) }, { status: 400 });
+    return apiError("VALIDATION_ERROR", "Validation failed", 400);
   }
 
   try {
@@ -40,32 +41,23 @@ export const POST = withCors(async (req) => {
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof MissingApiKeyError) {
-      return NextResponse.json(
-        { error: "No Groq API key configured. Add your own via the API KEY button." },
-        { status: 503 },
-      );
+      return apiError("SERVER_ERROR", "No Groq API key configured. Add your own via the API KEY button.", 503);
     }
     if (err instanceof GroqContextLimitError) {
-      return NextResponse.json({ error: err.message }, { status: 422 });
+      return apiError("SERVER_ERROR", err.message, 422);
     }
     if (err instanceof GroqAuthError) {
-      return NextResponse.json(
-        { error: "Groq rejected the API key. Clear it in settings or set a valid key." },
-        { status: 402 },
-      );
+      return apiError("SERVER_ERROR", "Groq rejected the API key. Clear it in settings or set a valid key.", 402);
+    }
+    if (err instanceof GroqRateLimitError) {
+      return apiError("SERVER_ERROR", err.message, 429);
     }
     if (err instanceof GroqTimeoutError) {
-      return NextResponse.json(
-        { error: "AI request timed out. Try again in a moment." },
-        { status: 504 },
-      );
+      return apiError("SERVER_ERROR", "AI request timed out. Try again in a moment.", 504);
     }
     if (err instanceof GroqUpstreamError) {
       console.error("[reports] upstream error", err);
-      return NextResponse.json(
-        { error: "AI provider unavailable. Try again later." },
-        { status: 502 },
-      );
+      return apiError("SERVER_ERROR", "AI provider unavailable. Try again later.", 502);
     }
     throw err;
   }

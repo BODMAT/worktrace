@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { getEventStatsForUser } from "@/server/events";
 import { EventStatsFilters } from "@/server/schemas/events";
 import { withCors, corsPreflight } from "@/server/cors";
 import { requireUser, UnauthorizedError } from "@/server/jwt";
+import { apiError } from "@/server/api-error";
 
 export const GET = withCors(async (req) => {
   let user;
@@ -11,7 +11,7 @@ export const GET = withCors(async (req) => {
     user = requireUser(req);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      return NextResponse.json({ error: err.message }, { status: 401 });
+      return apiError("UNAUTHORIZED", err.message, 401);
     }
     throw err;
   }
@@ -19,7 +19,7 @@ export const GET = withCors(async (req) => {
   const params = Object.fromEntries(req.nextUrl.searchParams);
   const parsed = EventStatsFilters.safeParse(params);
   if (!parsed.success) {
-    return NextResponse.json({ error: z.treeifyError(parsed.error) }, { status: 400 });
+    return apiError("VALIDATION_ERROR", "Validation failed", 400);
   }
 
   const stats = await getEventStatsForUser(user.id, parsed.data);

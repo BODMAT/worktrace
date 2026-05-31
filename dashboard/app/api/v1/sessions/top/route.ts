@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTopSessionsForUser } from "@/server/sessions";
 import { withCors, corsPreflight } from "@/server/cors";
 import { requireUser, UnauthorizedError } from "@/server/jwt";
+import { apiError } from "@/server/api-error";
 
 export const GET = withCors(async (req) => {
   let user;
@@ -9,7 +10,7 @@ export const GET = withCors(async (req) => {
     user = requireUser(req);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      return NextResponse.json({ error: err.message }, { status: 401 });
+      return apiError("UNAUTHORIZED", err.message, 401);
     }
     throw err;
   }

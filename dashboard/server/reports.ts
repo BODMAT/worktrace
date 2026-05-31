@@ -8,6 +8,7 @@ import {
   getDefaultModel,
   GroqAuthError,
   GroqContextLimitError,
+  GroqRateLimitError,
   GroqTimeoutError,
   GroqUpstreamError,
 } from "./groq";
@@ -71,4 +72,4 @@ export async function generateReport(
   };
 }
 
-export { GroqAuthError, GroqContextLimitError, GroqTimeoutError, GroqUpstreamError };
+export { GroqAuthError, GroqContextLimitError, GroqRateLimitError, GroqTimeoutError, GroqUpstreamError };

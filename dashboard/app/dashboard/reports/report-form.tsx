@@ -10,6 +10,7 @@ import {
 } from "./reports-client";
 import { MarkdownView } from "./markdown-view";
 import { ApiKeyModal } from "./api-key-modal";
+import { useToast } from "@/components/toast";
 
 const PRESETS: { value: RangePreset; label: string }[] = [
   { value: "today",     label: "TODAY"        },
@@ -47,6 +48,7 @@ function downloadMarkdown(markdown: string, rangeLabel: string): void {
 }
 
 export function ReportForm() {
+  const toast = useToast();
   const [range,     setRange]     = useState<RangePreset>("last_7d");
   const [from,      setFrom]      = useState<string>("");
   const [to,        setTo]        = useState<string>(todayISO());
@@ -80,10 +82,9 @@ export function ReportForm() {
       const result = await generateReport(input);
       setStatus({ kind: "success", result });
     } catch (err) {
-      setStatus({
-        kind:    "error",
-        message: err instanceof Error ? err.message : "Failed to generate report",
-      });
+      const message = err instanceof Error ? err.message : "Failed to generate report";
+      setStatus({ kind: "error", message });
+      toast.error(message);
     }
   }
 

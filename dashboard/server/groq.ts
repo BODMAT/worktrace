@@ -16,6 +16,16 @@ export class GroqUpstreamError extends Error {
   }
 }
 
+export class GroqRateLimitError extends Error {
+  constructor(public readonly retryAfterSec: number | null) {
+    const wait = retryAfterSec !== null
+      ? ` Try again in ${String(Math.ceil(retryAfterSec))}s.`
+      : " Try again in a moment.";
+    super(`Rate limit reached.${wait}`);
+    this.name = "GroqRateLimitError";
+  }
+}
+
 export class GroqContextLimitError extends Error {
   constructor() {
     super("Report context too large for the model. Try a shorter date range.");
@@ -77,6 +87,17 @@ export async function groqChat(input: GroqChatInput): Promise<string> {
 
   if (res.status === 401 || res.status === 403) throw new GroqAuthError();
   if (res.status === 413) throw new GroqContextLimitError();
+  if (res.status === 429) {
+    const body = await res.text();
+    let retryAfterSec: number | null = null;
+    try {
+      type ErrBody = { error?: { message?: string } };
+      const parsed = JSON.parse(body) as ErrBody;
+      const match  = /Please try again in (\d+(?:\.\d+)?)s/.exec(parsed.error?.message ?? "");
+      if (match?.[1]) retryAfterSec = parseFloat(match[1]);
+    } catch { /* ignore malformed body */ }
+    throw new GroqRateLimitError(retryAfterSec);
+  }
   if (!res.ok) {
     const body = await res.text();
     console.error("[groq] non-ok response", res.status, body);
