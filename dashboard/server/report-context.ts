@@ -2,14 +2,16 @@ import type { ContextLevel } from "@/types/report";
 import { prisma } from "./db";
 import { getMusicProductivity } from "./music";
 
-// Groq free tier: 12,000 tokens/request. Reserve ~500 for system prompt + ~2,000 for response.
-const INPUT_TOKEN_BUDGET = 7_500;
-const CHARS_PER_TOKEN    = 4;
-const MAX_HIGHLIGHTS     = 20;
-const MAX_SESSIONS_SHOWN = 20;
-const MAX_TOP_DOMAINS    = 10;
-const MAX_TOP_TAGS       = 15;
-const CONTENT_PREVIEW    = 300;
+// Groq free tier: ~6,000 TPM effective budget after system prompt (~800) + response (~2,000).
+// Use 3 chars/token — more accurate for technical content (URLs, code snippets).
+const INPUT_TOKEN_BUDGET  = 5_500;
+const CHARS_PER_TOKEN     = 3;
+const MAX_HIGHLIGHTS      = 20;
+const MAX_SESSIONS_SHOWN  = 20;
+const MAX_TOP_DOMAINS     = 10;
+const MAX_TOP_TAGS        = 15;
+const CONTENT_PREVIEW     = 300;
+const MAX_MUSIC_PROD_ROWS = 15;
 
 type RawEvent = {
   id:        string;
@@ -237,11 +239,15 @@ function renderMusicSection(tracks: RawTrack[], prod: ProductivityRow[]): string
   if (prod.length > 0) {
     out.push("");
     out.push("Productivity correlation (events per minute while track was active, tracks with ≥1 min listening):");
-    for (const p of prod) {
+    const shown = prod.slice(0, MAX_MUSIC_PROD_ROWS);
+    for (const p of shown) {
       out.push(
         `- "${p.title}" by ${p.artist} — ${p.perMin.toFixed(2)} events/min ` +
         `over ${p.minutes.toFixed(1)} min (${p.events} events)`,
       );
+    }
+    if (prod.length > MAX_MUSIC_PROD_ROWS) {
+      out.push(`- … and ${prod.length - MAX_MUSIC_PROD_ROWS} more tracks omitted`);
     }
   }
   out.push("");

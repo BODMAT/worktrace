@@ -7,6 +7,7 @@ import {
   MissingApiKeyError,
   GroqAuthError,
   GroqContextLimitError,
+  GroqRateLimitError,
   GroqTimeoutError,
   GroqUpstreamError,
 } from "@/server/reports";
@@ -47,6 +48,9 @@ export const POST = withCors(async (req) => {
     }
     if (err instanceof GroqAuthError) {
       return apiError("SERVER_ERROR", "Groq rejected the API key. Clear it in settings or set a valid key.", 402);
+    }
+    if (err instanceof GroqRateLimitError) {
+      return apiError("SERVER_ERROR", err.message, 429);
     }
     if (err instanceof GroqTimeoutError) {
       return apiError("SERVER_ERROR", "AI request timed out. Try again in a moment.", 504);
