@@ -12,6 +12,7 @@ import {
   getMusicTotals,
 } from "@/server/music";
 import type { MusicStats } from "@/types/music-stats";
+import { apiError } from "@/server/api-error";
 
 export const GET = withCors(async (req: NextRequest) => {
   // Cookie auth (dashboard) — fallback to Bearer (extension)
@@ -25,7 +26,7 @@ export const GET = withCors(async (req: NextRequest) => {
     }
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      return NextResponse.json({ error: err.message }, { status: 401 });
+      return apiError("UNAUTHORIZED", err.message, 401);
     }
     throw err;
   }
@@ -33,7 +34,7 @@ export const GET = withCors(async (req: NextRequest) => {
   const params = Object.fromEntries(req.nextUrl.searchParams);
   const parsed = MusicStatsQuery.safeParse(params);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid query params" }, { status: 400 });
+    return apiError("VALIDATION_ERROR", "Validation failed", 400);
   }
 
   const { from, to, label } = await resolveRange(

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { requireUser, UnauthorizedError } from "@/server/jwt";
 import { withCors, corsPreflight } from "@/server/cors";
 import { SetApiKeyInput } from "@/server/schemas/user-settings";
 import { getUserSettingsView, setGroqApiKey } from "@/server/user-settings";
+import { apiError } from "@/server/api-error";
 
 export const GET = withCors(async (req) => {
   let user;
@@ -11,7 +11,7 @@ export const GET = withCors(async (req) => {
     user = requireUser(req);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      return NextResponse.json({ error: err.message }, { status: 401 });
+      return apiError("UNAUTHORIZED", err.message, 401);
     }
     throw err;
   }
@@ -25,7 +25,7 @@ export const PUT = withCors(async (req) => {
     user = requireUser(req);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
-      return NextResponse.json({ error: err.message }, { status: 401 });
+      return apiError("UNAUTHORIZED", err.message, 401);
     }
     throw err;
   }
@@ -34,12 +34,12 @@ export const PUT = withCors(async (req) => {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return apiError("VALIDATION_ERROR", "Invalid JSON body", 400);
   }
 
   const parsed = SetApiKeyInput.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: z.treeifyError(parsed.error) }, { status: 400 });
+    return apiError("VALIDATION_ERROR", "Validation failed", 400);
   }
 
   const view = await setGroqApiKey(user.id, parsed.data.groqApiKey);

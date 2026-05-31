@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { endSessionForUser, SessionNotFoundError } from "@/server/sessions";
 import { SessionIdParam } from "@/server/schemas/sessions";
 import { withCors, corsPreflight } from "@/server/cors";
 import { requireUser, UnauthorizedError } from "@/server/jwt";
+import { apiError } from "@/server/api-error";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -16,7 +16,7 @@ export function PATCH(req: NextRequest, ctx: RouteContext): Promise<NextResponse
       user = requireUser(r);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
-        return NextResponse.json({ error: err.message }, { status: 401 });
+        return apiError("UNAUTHORIZED", err.message, 401);
       }
       throw err;
     }
@@ -24,7 +24,7 @@ export function PATCH(req: NextRequest, ctx: RouteContext): Promise<NextResponse
     const params = await ctx.params;
     const parsed = SessionIdParam.safeParse(params);
     if (!parsed.success) {
-      return NextResponse.json({ error: z.treeifyError(parsed.error) }, { status: 400 });
+      return apiError("VALIDATION_ERROR", "Validation failed", 400);
     }
 
     try {
@@ -32,7 +32,7 @@ export function PATCH(req: NextRequest, ctx: RouteContext): Promise<NextResponse
       return NextResponse.json(session, { status: 200 });
     } catch (err) {
       if (err instanceof SessionNotFoundError) {
-        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+        return apiError("NOT_FOUND", "Session not found", 404);
       }
       throw err;
     }
