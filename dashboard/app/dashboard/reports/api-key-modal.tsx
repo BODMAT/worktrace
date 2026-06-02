@@ -18,6 +18,9 @@ export function ApiKeyModal({ open, status, onClose, onSaved }: Props) {
   const [busy,  setBusy]  = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const trimmed = value.trim();
+  const keyFormatOk = trimmed.startsWith("gsk_") && trimmed.length >= 20;
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -105,7 +108,9 @@ export function ApiKeyModal({ open, status, onClose, onSaved }: Props) {
                 className="mb-2 w-full rounded border border-border bg-bg px-2 py-1.5 text-xs text-text outline-none transition-colors focus:border-purple disabled:opacity-50"
               />
 
-              {error ? (
+              {trimmed.length > 0 && !trimmed.startsWith("gsk_") ? (
+                <p className="mb-2 text-[11px] text-pink">Key must start with gsk_</p>
+              ) : error ? (
                 <p className="mb-2 text-[11px] text-pink">{error}</p>
               ) : null}
 
@@ -135,7 +140,7 @@ export function ApiKeyModal({ open, status, onClose, onSaved }: Props) {
                 <button
                   type="button"
                   onClick={() => commit(value)}
-                  disabled={busy || value.trim().length < 8}
+                  disabled={busy || !keyFormatOk}
                   className="cursor-pointer rounded border border-cyan bg-cyan/10 px-3 py-1.5 text-[10px] font-bold tracking-widest text-cyan transition-colors hover:bg-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy ? "SAVING…" : "SAVE"}
