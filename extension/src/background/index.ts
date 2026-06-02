@@ -358,7 +358,11 @@ chrome.runtime.onMessage.addListener(
             session: { ...session, elapsedMs: getElapsedMs(session) },
           });
           // Fire-and-forget DB session creation — retried by sync alarm if it fails
-          if (!session.dbSessionId) void ensureDbSession();
+          if (!session.dbSessionId) {
+            ensureDbSession().catch((err) =>
+              console.warn("[worktrace] ensureDbSession failed:", err),
+            );
+          }
         })
         .catch((err: unknown) =>
           sendResponse({
