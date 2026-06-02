@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "zip": "npm run build && powershell -Command \"Compress-Archive -Path dist/* -DestinationPath worktrace-extension.zip -Force\""
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.36",
