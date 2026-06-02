@@ -23,8 +23,10 @@ import {
 } from "./session";
 import { initSync, flush, getStatus } from "./sync";
 
-const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL as string;
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+const DASHBOARD_URL = (import.meta.env.VITE_DASHBOARD_URL as string | undefined)
+  ?? "https://worktrace-ecru.vercel.app";
+const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined)
+  ?? "574196284059-4go0qqvqvbpjla25hmbp9hc2h3qtvcqi.apps.googleusercontent.com";
 const DEV_MODE = import.meta.env.VITE_DEV_MODE === "true";
 const EXPIRY_BUFFER_MS = 60_000;
 

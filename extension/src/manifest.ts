@@ -4,6 +4,7 @@ import pkg from "../package.json" with { type: "json" };
 export default defineManifest({
   manifest_version: 3,
   name: "WorkTrace",
+  key: "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvSo1/6UBVPUowjH+mwCmWB30I85MGpNqEvf/uDMQqPcC/+VK7iXahcqQcT1xXo3W/6tXeHVWuDfFslkKw6NZSFrlF7+4AUfl2JPKh4Rd/K5iAnM4BoTKQGx9v6wlR1RYIEgGQ+/nDyc7w1zAI+2oNsrUf+Uw10xDWzDR9fFDntpSgnq/ogR3ojrnnlJdbHIqjYIhdbF832I8Cu1+pMPo/BYbEE9/GFUnV7oNTQARF6Z46w4FZXmD5OLHQPBiAnXqO0u4FM2mKT7BjR64jgYtPhbvwJxYtx8BJPNyfukXq3wwVn7Is9a2iHaYaRg2GB6BSwXmG71sgJHvyHUuSRSlVQIDAQAB",
   version: pkg.version,
   description: "Capture dev session context for AI-generated reports.",
   icons: {
