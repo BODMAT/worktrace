@@ -477,18 +477,20 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === "NOTE_ADD") {
-      getSession().then((session) => {
-        if (!session || session.pausedAt !== null) return;
-        const event: PendingEvent = {
-          url:       `worktrace://note/${crypto.randomUUID()}`,
-          title:     message.text.slice(0, 80) || "Note",
-          content:   message.text,
-          tags:      ["note", ...message.tags],
-          timestamp: new Date().toISOString(),
-        };
-        void enqueuePending(event);
-      });
-      return false;
+      getSession().then(async (session) => {
+        if (session && session.pausedAt === null) {
+          const event: PendingEvent = {
+            url:       `worktrace://note/${crypto.randomUUID()}`,
+            title:     message.text.slice(0, 80) || "Note",
+            content:   message.text,
+            tags:      ["note", ...message.tags],
+            timestamp: new Date().toISOString(),
+          };
+          await enqueuePending(event);
+        }
+        sendResponse({ success: true });
+      }).catch(() => sendResponse({ success: true }));
+      return true;
     }
 
     // ─── Sync messages ───────────────────────────────────────────────────────
