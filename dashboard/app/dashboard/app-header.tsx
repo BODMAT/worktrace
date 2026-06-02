@@ -1,4 +1,4 @@
-import { LogoutButton } from "./logout-button";
+import { AccountMenu } from "./account-menu";
 import { HeaderNav } from "./header-nav";
 import { MobileNav } from "./mobile-nav";
 
@@ -52,7 +52,7 @@ export function AppHeader({ email, name, picture }: Props) {
         >
           {displayName}
         </span>
-        <LogoutButton />
+        <AccountMenu />
         <MobileNav />
       </div>
     </header>
