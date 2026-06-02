@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WorkTrace</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <div class="popup">
+
+      <!-- Header -->
+      <header class="popup__header">
+        <div class="popup__logo">
+          <span class="popup__logo-icon">⬡</span>
+          <div class="popup__logo-stack">
+            <a href="https://worktrace-ecru.vercel.app" class="popup__logo-text" target="_blank" rel="noopener noreferrer">WORKTRACE</a>
+            <span class="popup__user-email" id="user-email" hidden></span>
+          </div>
+        </div>
+        <div class="popup__header-right">
+          <div class="popup__status" id="status-badge">
+            <span class="popup__status-dot" id="status-dot"></span>
+            <span class="popup__status-label" id="status-label">IDLE</span>
+          </div>
+          <button class="btn btn--logout" id="btn-logout" hidden>⎋</button>
+        </div>
+      </header>
+
+      <!-- Auth -->
+      <section class="popup__auth" id="auth-section">
+        <button class="btn btn--primary" id="btn-login">Sign in with Google</button>
+      </section>
+
+      <!-- Timer -->
+      <section class="popup__timer" id="timer-section">
+        <div class="popup__time" id="timer">00:00:00</div>
+        <div class="popup__controls">
+          <button class="btn btn--start" id="btn-start">▶ START</button>
+          <button class="btn btn--pause" id="btn-pause" disabled>⏸ PAUSE</button>
+          <button class="btn btn--stop"  id="btn-stop"  disabled>■ STOP</button>
+        </div>
+      </section>
+
+      <!-- Sync -->
+      <div class="popup__sync" id="sync-indicator">
+        <div class="popup__sync-row">
+          <span class="popup__sync-icon">⚡</span>
+          <span class="popup__sync-count" id="sync-label">0 events queued</span>
+        </div>
+        <div class="popup__sync-meta" id="sync-meta">not synced yet</div>
+      </div>
+
+      <!-- Now Playing -->
+      <div class="popup__track" id="track-section" style="display: none">
+        <span class="popup__track-icon">♪</span>
+        <div class="popup__track-info">
+          <span class="popup__track-title" id="track-title">—</span>
+          <span class="popup__track-artist" id="track-artist"></span>
+        </div>
+        <div class="popup__track-right">
+          <span class="popup__track-source" id="track-source"></span>
+          <span class="popup__track-duration" id="track-duration">0:00</span>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <section class="popup__notes">
+        <div class="popup__field">
+          <label class="popup__field-label">NOTE</label>
+          <input class="popup__field-input" id="note-input" type="text" placeholder="what are you working on..." />
+        </div>
+        <div class="popup__field">
+          <label class="popup__field-label">TAGS</label>
+          <input class="popup__field-input" id="tags-input" type="text" placeholder="react, bug, refactor..." />
+        </div>
+        <button class="btn btn--note" id="btn-note">+ LOG NOTE</button>
+      </section>
+
+      <!-- Parsing Mode -->
+      <section class="popup__parsing">
+        <div class="popup__field-label">CAPTURE</div>
+        <div class="popup__parsing-group" id="parsing-group" role="group" aria-label="Parsing mode">
+          <button class="popup__parsing-btn" data-mode="full">FULL</button>
+          <button class="popup__parsing-btn" data-mode="headings">HEADINGS</button>
+          <button class="popup__parsing-btn" data-mode="meta">META</button>
+        </div>
+      </section>
+
+      <!-- Privacy / Blocklist -->
+      <section class="popup__blocklist">
+
+        <div class="popup__field-label">PRIVACY</div>
+
+        <!-- 4а: основний тоггл — поточний сайт -->
+        <div class="popup__blocklist-current">
+          <span class="popup__blocklist-domain" id="current-domain">—</span>
+          <label class="popup__toggle" title="Block this site">
+            <input type="checkbox" id="toggle-current-domain" />
+            <span class="popup__toggle-track"></span>
+          </label>
+        </div>
+
+        <!-- 4б: акордеон зі списком заблокованих -->
+        <button class="popup__blocklist-accordion" id="btn-blocklist-accordion" hidden>
+          <span id="blocklist-count-label">▾ 0 BLOCKED</span>
+        </button>
+        <div class="popup__blocklist-list" id="blocklist-list" hidden>
+          <!-- dynamically filled: one .popup__blocklist-item per blocked domain -->
+        </div>
+
+      </section>
+
+    </div>
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+generator zod {
+  provider = "prisma-zod-generator"
+  output   = "../generated/zod"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String       @id @default(cuid())
+  email     String       @unique
+  googleId  String       @unique
+  name      String?
+  picture   String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  sessions  Session[]
+  settings  UserSetting?
+}
+
+model UserSetting {
+  userId          String   @id
+  groqApiKey      String?
+  groqApiKeyLast4 String?
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events    Event[]
+  tracks    Track[]
+
+  @@index([userId])
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  sessionId String
+  url       String
+  title     String
+  content   String?
+  tags      String[]
+  timestamp DateTime
+  createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([timestamp])
+}
+
+model Track {
+  id         String    @id @default(cuid())
+  sessionId  String
+  artist     String
+  title      String
+  listenedMs Int       @default(0)   // accumulated listening time across repeated plays
+  capturedAt DateTime  @default(now()) // first detected in this session
+  endedAt    DateTime?               // latest end time (overwritten on each play)
+  session    Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, artist, title]) // one record per song per session; enables upsert
+  @@index([capturedAt])
+}

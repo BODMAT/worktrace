@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+:root {
+  --c-cyan:    #00e5b0;
+  --c-purple:  #7c3aff;
+  --c-yellow:  #f0d000;
+  --c-pink:    #ff0070;
+  --c-bg:      #080812;
+  --c-surface: #0f0f20;
+  --c-border:  #1c1c38;
+  --c-text:    #c8d0f0;
+  --c-muted:   #3e3e60;
+}
+
+@theme inline {
+  --color-bg:      var(--c-bg);
+  --color-surface: var(--c-surface);
+  --color-border:  var(--c-border);
+  --color-text:    var(--c-text);
+  --color-muted:   var(--c-muted);
+  --color-cyan:    var(--c-cyan);
+  --color-purple:  var(--c-purple);
+  --color-yellow:  var(--c-yellow);
+  --color-pink:    var(--c-pink);
+  --font-mono:     var(--font-geist-mono);
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
