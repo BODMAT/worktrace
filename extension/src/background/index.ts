@@ -48,15 +48,18 @@ function isExpired(expiresAt: number): boolean {
   return Date.now() >= expiresAt - EXPIRY_BUFFER_MS;
 }
 
-function decodeEmail(jwt: string): string | null {
+function decodeJwtPayload(jwt: string): { email?: string; exp?: number } | null {
   try {
     const payloadB64 = jwt.split(".")[1];
     if (!payloadB64) return null;
-    const payload = JSON.parse(atob(payloadB64)) as { email?: string };
-    return payload.email ?? null;
+    return JSON.parse(atob(payloadB64)) as { email?: string; exp?: number };
   } catch {
     return null;
   }
+}
+
+function decodeEmail(jwt: string): string | null {
+  return decodeJwtPayload(jwt)?.email ?? null;
 }
 
 // ─── Google OAuth ──────────────────────────────────────────────────────────────
@@ -101,9 +104,9 @@ async function exchangeForJWT(googleIdToken: string): Promise<StoredAuth> {
   }
 
   const { token } = await res.json() as { token: string };
-  const payloadB64 = token.split(".")[1] ?? "";
-  const { exp } = JSON.parse(atob(payloadB64)) as { exp: number };
-  return { jwt: token, jwtExpiresAt: exp * 1000 };
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) throw new Error("JWT missing exp claim");
+  return { jwt: token, jwtExpiresAt: payload.exp * 1000 };
 }
 
 // ─── Core ──────────────────────────────────────────────────────────────────────
