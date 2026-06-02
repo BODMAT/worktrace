@@ -271,14 +271,19 @@ function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void
 function ResultPanel({ result }: { result: GenerateReportResponse }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3 text-[10px] tracking-widest text-muted">
-        <span>RANGE: <span className="text-cyan">{result.range.label.toUpperCase()}</span></span>
-        <span>·</span>
-        <span>DETAIL LEVEL: <span className="text-cyan">{result.contextLevel}</span></span>
-        <span>·</span>
-        <span>~{result.estimatedInputTokens.toLocaleString()} INPUT TOKENS</span>
-        <span>·</span>
-        <span>MODEL: <span className="text-purple">{result.model}</span></span>
+      <div className="flex flex-wrap gap-2 text-[10px] tracking-widest">
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          RANGE <span className="ml-1 text-cyan">{result.range.label.toUpperCase()}</span>
+        </span>
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          DETAIL <span className="ml-1 text-cyan">{result.contextLevel}</span>
+        </span>
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          ~{result.estimatedInputTokens.toLocaleString()} TOKENS
+        </span>
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          MODEL <span className="ml-1 text-purple">{result.model}</span>
+        </span>
       </div>
       <MarkdownView markdown={result.markdown} />
     </div>

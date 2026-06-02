@@ -156,12 +156,16 @@ function SummaryRow({ listenedMs, artists, tracks }: { listenedMs: number; artis
   const animArtists = useCountUp(artists);
   const animTracks  = useCountUp(tracks);
   return (
-    <div className="flex flex-wrap gap-4 text-[10px] tracking-widest text-muted">
-      <span>LISTENED: <span className="text-cyan">{fmtListened(listenedMs)}</span></span>
-      <span>·</span>
-      <span>ARTISTS: <span className="text-cyan">{animArtists}</span></span>
-      <span>·</span>
-      <span>TRACKS: <span className="text-cyan">{animTracks}</span></span>
+    <div className="flex flex-wrap gap-2 text-[10px] tracking-widest">
+      <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+        LISTENED <span className="ml-1 text-cyan">{fmtListened(listenedMs)}</span>
+      </span>
+      <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+        ARTISTS <span className="ml-1 text-cyan">{animArtists}</span>
+      </span>
+      <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+        TRACKS <span className="ml-1 text-cyan">{animTracks}</span>
+      </span>
     </div>
   );
 }
