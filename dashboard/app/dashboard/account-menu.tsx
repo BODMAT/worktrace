@@ -93,7 +93,7 @@ export function AccountMenu({ userEmail }: { userEmail: string }) {
         ⎋
       </button>
 
-      {createPortal(
+      {typeof document !== "undefined" && createPortal(
         <AnimatePresence mode="wait">
 
           {/* ── Modal 1: account options ── */}
