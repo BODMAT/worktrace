@@ -91,16 +91,13 @@ The extension card should appear with no errors. For HMR-rebuild during active d
 
 ### Load from `.zip` (without source code)
 
-```bash
-cd extension
-npm run zip          # builds and creates worktrace-extension.zip
-```
+Download `worktrace-extension.zip` from the [latest GitHub Release](https://github.com/BODMAT/worktrace/releases/latest), then:
 
-Then in Chrome:
-
-1. Unzip `worktrace-extension.zip` to any folder
+1. Unzip to any folder
 2. Open `chrome://extensions` → **Developer mode** → **Load unpacked**
 3. Select the unzipped folder
+
+No `.env` needed — the production dashboard URL and OAuth client ID are baked into the release build.
 
 ## Verifying it works
 
