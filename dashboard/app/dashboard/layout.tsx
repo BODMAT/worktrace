@@ -19,7 +19,7 @@ export default async function DashboardLayout({
       </main>
       <footer className="relative z-10 flex items-center justify-center border-t border-border bg-bg/95 px-6 py-3 backdrop-blur">
         <a
-          href="https://github.com/BODMAT/worktrace"
+          href="https://github.com/BODMAT/worktrace/releases"
           target="_blank"
           rel="noopener noreferrer"
           className="text-[10px] font-bold tracking-widest text-muted transition-colors hover:text-cyan"
