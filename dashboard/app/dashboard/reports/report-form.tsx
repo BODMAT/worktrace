@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 import type { GenerateReportResponse, RangePreset } from "@/types/report";
 import type { UserSettingsView } from "@/server/user-settings";
 import {
@@ -189,8 +190,9 @@ export function ReportForm() {
       {status.kind === "error"   ? <ErrorPanel message={status.message} onRetry={handleGenerate} /> : null}
       {status.kind === "success" ? <ResultPanel result={status.result} /> : null}
 
-      {modalOpen && apiKey ? (
+      {apiKey ? (
         <ApiKeyModal
+          open={modalOpen}
           status={apiKey}
           onClose={() => setModalOpen(false)}
           onSaved={(next) => setApiKey(next)}
@@ -216,10 +218,36 @@ function CustomField({ label, children }: { label: string; children: React.React
 
 function LoadingPanel() {
   return (
-    <div className="overflow-hidden rounded border border-border bg-surface">
-      <div className="h-1 animate-pulse bg-cyan" />
-      <div className="p-6 text-center text-xs text-muted">
-        Asking the model… this typically takes 10–30 seconds.
+    <div className="overflow-hidden rounded border border-cyan/20 bg-surface">
+      {/* Layer A — scanning bar */}
+      <div className="relative h-0.5 overflow-hidden bg-border">
+        <motion.div
+          className="absolute inset-y-0 w-1/3 bg-linear-to-r from-transparent via-cyan to-transparent"
+          animate={{ x: ["-100%", "400%"] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
+        />
+      </div>
+
+      <div className="flex flex-col items-center gap-4 p-8">
+        {/* Layer B — dot wave */}
+        <div className="flex gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <motion.span
+              key={i}
+              className="block h-1.5 w-1.5 rounded-full bg-cyan"
+              animate={{ opacity: [0.3, 1, 0.3], y: [0, -5, 0] }}
+              transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.18, ease: "easeInOut" }}
+            />
+          ))}
+        </div>
+
+        {/* Layer C — text */}
+        <div className="flex flex-col items-center gap-1 text-center">
+          <span className="text-[10px] font-bold tracking-[0.2em] text-cyan/80">
+            ASKING THE MODEL
+          </span>
+          <span className="text-[10px] text-muted">typically 10–30 seconds</span>
+        </div>
       </div>
     </div>
   );
@@ -243,14 +271,19 @@ function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void
 function ResultPanel({ result }: { result: GenerateReportResponse }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3 text-[10px] tracking-widest text-muted">
-        <span>RANGE: <span className="text-cyan">{result.range.label.toUpperCase()}</span></span>
-        <span>·</span>
-        <span>DETAIL LEVEL: <span className="text-cyan">{result.contextLevel}</span></span>
-        <span>·</span>
-        <span>~{result.estimatedInputTokens.toLocaleString()} INPUT TOKENS</span>
-        <span>·</span>
-        <span>MODEL: <span className="text-purple">{result.model}</span></span>
+      <div className="flex flex-wrap gap-2 text-[10px] tracking-widest">
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          RANGE <span className="ml-1 text-cyan">{result.range.label.toUpperCase()}</span>
+        </span>
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          DETAIL <span className="ml-1 text-cyan">{result.contextLevel}</span>
+        </span>
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          ~{result.estimatedInputTokens.toLocaleString()} TOKENS
+        </span>
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          MODEL <span className="ml-1 text-purple">{result.model}</span>
+        </span>
       </div>
       <MarkdownView markdown={result.markdown} />
     </div>

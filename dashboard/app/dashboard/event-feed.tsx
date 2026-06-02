@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useLenis } from "lenis/react";
+import { motion } from "framer-motion";
 import { EventCard } from "./event-card";
 import {
   eventsQueryKey,
@@ -39,6 +41,12 @@ export function EventFeed({ filters, onClearFilters }: Props) {
   );
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const lenis = useLenis();
+
+  // After each new batch loads, tell Lenis the page height changed
+  useEffect(() => {
+    lenis?.resize();
+  }, [data?.pages.length, lenis]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -60,15 +68,34 @@ export function EventFeed({ filters, onClearFilters }: Props) {
   if (isError)   return <ErrorState onRetry={() => refetch()} />;
   if (events.length === 0) return <EmptyState onClear={onClearFilters} />;
 
+  const listVariants = {
+    visible: { transition: { staggerChildren: 0.05 } },
+  };
+  const itemVariants = {
+    hidden:  { opacity: 0, y: 16 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] as const } },
+  };
+
   return (
     <>
-      <ul className="flex flex-col gap-3" aria-busy={isFetching}>
-        {events.map((event) => (
-          <li key={event.id}>
+      <motion.ul
+        className="flex flex-col gap-3"
+        aria-busy={isFetching}
+        variants={listVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {events.map((event, idx) => (
+          <motion.li
+            key={event.id}
+            variants={idx < 10 ? itemVariants : undefined}
+            initial={idx < 10 ? "hidden" : false}
+            animate="visible"
+          >
             <EventCard event={event} />
-          </li>
+          </motion.li>
         ))}
-      </ul>
+      </motion.ul>
 
       {hasNextPage ? (
         <div

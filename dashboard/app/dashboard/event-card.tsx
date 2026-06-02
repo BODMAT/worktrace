@@ -2,6 +2,7 @@
 
 import type { EventDTO } from "@/types/event";
 import { useClientLocalized } from "./use-client-localized";
+import { motion } from "framer-motion";
 
 function hostnameOf(url: string): string {
   try {
@@ -30,7 +31,10 @@ export function EventCard({ event }: { event: EventDTO }) {
   const time = useClientLocalized(event.timestamp, utcShort, localShort);
 
   return (
-    <article className="flex flex-col gap-2 rounded border border-border bg-surface p-3 transition-colors hover:border-purple/60">
+    <motion.article
+      className="flex flex-col gap-2 rounded border border-border bg-surface p-3 transition-colors hover:border-purple/60"
+      whileHover={{ scale: 1.012, transition: { duration: 0.15 } }}
+    >
       <div className="flex items-baseline justify-between gap-3">
         <a
           href={event.url}
@@ -70,6 +74,6 @@ export function EventCard({ event }: { event: EventDTO }) {
           ))}
         </div>
       ) : null}
-    </article>
+    </motion.article>
   );
 }

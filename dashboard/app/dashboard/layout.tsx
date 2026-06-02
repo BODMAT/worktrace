@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/server/current-user";
 import { AppHeader } from "./app-header";
+import { ParallaxBg } from "@/components/parallax-bg";
+import { PageTransition } from "@/components/page-transition";
 
 export default async function DashboardLayout({
   children,
@@ -9,9 +11,12 @@ export default async function DashboardLayout({
   if (!user) redirect("/login");
 
   return (
-    <div className="flex min-h-full flex-1 flex-col bg-bg text-text">
+    <div className="relative flex min-h-full flex-1 flex-col text-text">
+      <ParallaxBg />
       <AppHeader email={user.email} name={user.name} picture={user.picture} />
-      <main className="flex-1">{children}</main>
+      <main className="relative z-1 flex-1">
+        <PageTransition>{children}</PageTransition>
+      </main>
     </div>
   );
 }

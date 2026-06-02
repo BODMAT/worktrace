@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { GoogleLoginButton } from "./google-button";
+import { LoginEntrance, LoginItem } from "./login-entrance";
 
 export const metadata: Metadata = {
   title:       "Sign in",
@@ -13,8 +14,8 @@ export default function LoginPage() {
 
   return (
     <main className="flex flex-1 items-center justify-center bg-bg">
-      <div className="flex w-full max-w-sm flex-col items-center gap-8 rounded-md border border-border bg-surface p-10">
-        <div className="flex flex-col items-center gap-3 text-center">
+      <LoginEntrance>
+        <LoginItem>
           <div className="flex items-center gap-2">
             <span
               className="text-2xl text-cyan"
@@ -32,19 +33,21 @@ export default function LoginPage() {
           <p className="text-xs text-muted">
             Sign in with the same Google account you use in the extension.
           </p>
-        </div>
+        </LoginItem>
 
-        {clientId ? (
-          <>
-            <Script src="https://accounts.google.com/gsi/client?hl=en" strategy="afterInteractive" />
-            <GoogleLoginButton clientId={clientId} />
-          </>
-        ) : (
-          <p className="text-xs text-pink">
-            NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.
-          </p>
-        )}
-      </div>
+        <LoginItem>
+          {clientId ? (
+            <>
+              <Script src="https://accounts.google.com/gsi/client?hl=en" strategy="afterInteractive" />
+              <GoogleLoginButton clientId={clientId} />
+            </>
+          ) : (
+            <p className="text-xs text-pink">
+              NEXT_PUBLIC_GOOGLE_CLIENT_ID is not configured.
+            </p>
+          )}
+        </LoginItem>
+      </LoginEntrance>
     </main>
   );
 }

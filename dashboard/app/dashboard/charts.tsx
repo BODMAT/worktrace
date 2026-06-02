@@ -19,6 +19,7 @@ import {
 } from "./feed-shared";
 import { EventsByDayChart } from "./events-by-day-chart";
 import { TopTagsChart } from "./top-tags-chart";
+import { AnimatePresence, motion } from "framer-motion";
 
 ChartJS.register(
   CategoryScale,
@@ -57,9 +58,17 @@ export function Charts({ filters }: { filters: FeedFilters }) {
   }
 
   return (
-    <>
-      <EventsByDayChart byDay={data.byDay} />
-      <TopTagsChart top={data.topTags} />
-    </>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key="charts"
+        className="contents"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.35 }}
+      >
+        <EventsByDayChart byDay={data.byDay} />
+        <TopTagsChart top={data.topTags} />
+      </motion.div>
+    </AnimatePresence>
   );
 }

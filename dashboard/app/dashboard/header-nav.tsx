@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 
 const ITEMS: { href: string; label: string }[] = [
   { href: "/dashboard",         label: "FEED"    },
@@ -21,11 +22,18 @@ export function HeaderNav() {
             key={item.href}
             href={item.href}
             className={
-              "rounded px-2.5 py-1 transition-colors " +
-              (active ? "bg-cyan/10 text-cyan" : "text-muted hover:text-text")
+              "relative rounded px-2.5 py-1 transition-colors " +
+              (active ? "text-cyan" : "text-muted hover:text-text")
             }
           >
-            {item.label}
+            {active && (
+              <motion.span
+                layoutId="nav-pill"
+                className="absolute inset-0 rounded bg-cyan/10"
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
+              />
+            )}
+            <span className="relative z-10">{item.label}</span>
           </Link>
         );
       })}

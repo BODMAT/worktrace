@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { animate } from "framer-motion";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { MusicStats } from "@/types/music-stats";
 import { TopArtistsChart } from "./top-artists-chart";
@@ -24,6 +25,22 @@ async function fetchMusicStats(range: Preset): Promise<MusicStats> {
     throw new Error(body.error ?? `HTTP ${res.status}`);
   }
   return res.json() as Promise<MusicStats>;
+}
+
+function useCountUp(target: number): number {
+  const [display, setDisplay] = useState(0);
+  const prev = useRef(0);
+  useEffect(() => {
+    const from = prev.current;
+    prev.current = target;
+    const controls = animate(from, target, {
+      duration: 0.8,
+      ease: "easeOut",
+      onUpdate: (v) => setDisplay(Math.round(v)),
+    });
+    return () => controls.stop();
+  }, [target]);
+  return display;
 }
 
 function fmtListened(ms: number): string {
@@ -78,20 +95,12 @@ export function MusicClient() {
 
       {data ? (
         <>
-          {/* Summary row */}
-          <div className="flex flex-wrap gap-4 text-[10px] tracking-widest text-muted">
-            <span>
-              LISTENED: <span className="text-cyan">{fmtListened(data.totalListenedMs)}</span>
-            </span>
-            <span>·</span>
-            <span>
-              ARTISTS: <span className="text-cyan">{data.totalArtists}</span>
-            </span>
-            <span>·</span>
-            <span>
-              TRACKS: <span className="text-cyan">{data.totalTracks}</span>
-            </span>
-          </div>
+          {/* Summary row with count-up */}
+          <SummaryRow
+            listenedMs={data.totalListenedMs}
+            artists={data.totalArtists}
+            tracks={data.totalTracks}
+          />
 
           {data.totalTracks === 0 ? (
             <div className="rounded border border-border bg-surface px-4 py-10 text-center text-[10px] tracking-widest text-muted">
@@ -139,6 +148,24 @@ export function MusicClient() {
           )}
         </>
       ) : null}
+    </div>
+  );
+}
+
+function SummaryRow({ listenedMs, artists, tracks }: { listenedMs: number; artists: number; tracks: number }) {
+  const animArtists = useCountUp(artists);
+  const animTracks  = useCountUp(tracks);
+  return (
+    <div className="flex flex-wrap gap-2 text-[10px] tracking-widest">
+      <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+        LISTENED <span className="ml-1 text-cyan">{fmtListened(listenedMs)}</span>
+      </span>
+      <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+        ARTISTS <span className="ml-1 text-cyan">{animArtists}</span>
+      </span>
+      <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+        TRACKS <span className="ml-1 text-cyan">{animTracks}</span>
+      </span>
     </div>
   );
 }
