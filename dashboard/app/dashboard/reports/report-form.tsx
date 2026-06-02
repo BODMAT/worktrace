@@ -47,7 +47,14 @@ function loadCache(key: string): CachedReport | null {
 }
 
 function saveCache(key: string, data: CachedReport): void {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* quota */ }
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (err) {
+    if (err instanceof DOMException && (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED")) {
+      throw err; // let caller notify the user
+    }
+    // other DOMExceptions are unexpected — swallow silently
+  }
 }
 
 function fmtCreatedAt(iso: string): string {
@@ -146,7 +153,11 @@ export function ReportForm({ userEmail }: { userEmail: string }) {
     try {
       const result = await generateReport(input);
       const createdAt = new Date().toISOString();
-      saveCache(reportCacheKey(userEmail, range, from, to), { result, createdAt });
+      try {
+        saveCache(reportCacheKey(userEmail, range, from, to), { result, createdAt });
+      } catch {
+        toast.error("Report generated but couldn't be cached — browser storage is full.");
+      }
       setStatus({ kind: "success", result, createdAt });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to generate report";
