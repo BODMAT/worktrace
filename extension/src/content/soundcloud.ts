@@ -147,3 +147,7 @@ chrome.runtime.onMessage.addListener(
 
 sendIfChanged(parseTrack());
 observeChanges();
+
+window.addEventListener("pagehide", () => {
+  chrome.runtime.sendMessage({ type: "TRACK_STOP" } satisfies MusicMessage).catch(() => {});
+});
