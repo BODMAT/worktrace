@@ -32,10 +32,11 @@ type Status =
 
 type CachedReport = { result: GenerateReportResponse; createdAt: string };
 
-function reportCacheKey(range: RangePreset, from: string, to: string): string {
+function reportCacheKey(email: string, range: RangePreset, from: string, to: string): string {
+  const u = email.toLowerCase().trim();
   return range === "custom"
-    ? `wt:report:custom:${from}:${to}`
-    : `wt:report:${range}`;
+    ? `wt:report:${u}:custom:${from}:${to}`
+    : `wt:report:${u}:${range}`;
 }
 
 function loadCache(key: string): CachedReport | null {
@@ -75,7 +76,7 @@ function downloadMarkdown(markdown: string, rangeLabel: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function ReportForm() {
+export function ReportForm({ userEmail }: { userEmail: string }) {
   const toast = useToast();
   const [range,     setRange]     = useState<RangePreset>("last_7d");
   const [from,      setFrom]      = useState<string>("");
@@ -83,7 +84,7 @@ export function ReportForm() {
   // Lazy init: read localStorage for the default range before first render
   const [status, setStatus] = useState<Status>(() => {
     try {
-      const cached = loadCache(reportCacheKey("last_7d", "", ""));
+      const cached = loadCache(reportCacheKey(userEmail, "last_7d", "", ""));
       if (cached) return { kind: "success", result: cached.result, createdAt: cached.createdAt };
     } catch { /* localStorage unavailable (SSR guard) */ }
     return { kind: "idle" };
@@ -103,7 +104,7 @@ export function ReportForm() {
   function handleRangeChange(newRange: RangePreset) {
     setRange(newRange);
     if (newRange === "custom") return;
-    const cached = loadCache(reportCacheKey(newRange, "", ""));
+    const cached = loadCache(reportCacheKey(userEmail, newRange, "", ""));
     setStatus(cached
       ? { kind: "success", result: cached.result, createdAt: cached.createdAt }
       : { kind: "idle" });
@@ -113,7 +114,7 @@ export function ReportForm() {
   function handleFromChange(newFrom: string) {
     setFrom(newFrom);
     if (!newFrom || !to) { setStatus({ kind: "idle" }); return; }
-    const cached = loadCache(reportCacheKey("custom", newFrom, to));
+    const cached = loadCache(reportCacheKey(userEmail, "custom", newFrom, to));
     setStatus(cached
       ? { kind: "success", result: cached.result, createdAt: cached.createdAt }
       : { kind: "idle" });
@@ -122,7 +123,7 @@ export function ReportForm() {
   function handleToChange(newTo: string) {
     setTo(newTo);
     if (!from || !newTo) { setStatus({ kind: "idle" }); return; }
-    const cached = loadCache(reportCacheKey("custom", from, newTo));
+    const cached = loadCache(reportCacheKey(userEmail, "custom", from, newTo));
     setStatus(cached
       ? { kind: "success", result: cached.result, createdAt: cached.createdAt }
       : { kind: "idle" });
@@ -145,7 +146,7 @@ export function ReportForm() {
     try {
       const result = await generateReport(input);
       const createdAt = new Date().toISOString();
-      saveCache(reportCacheKey(range, from, to), { result, createdAt });
+      saveCache(reportCacheKey(userEmail, range, from, to), { result, createdAt });
       setStatus({ kind: "success", result, createdAt });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to generate report";
