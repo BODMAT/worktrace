@@ -67,6 +67,7 @@ body {
   font-weight: 700;
   color: var(--c-cyan);
   text-shadow: 0 0 6px color-mix(in srgb, var(--c-cyan) 60%, transparent);
+  text-decoration: none;
 }
 
 .popup__user-email {

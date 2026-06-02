@@ -17,6 +17,16 @@ export default async function DashboardLayout({
       <main className="relative z-1 flex-1">
         <PageTransition>{children}</PageTransition>
       </main>
+      <footer className="relative z-10 flex items-center justify-center border-t border-border bg-bg/95 px-6 py-3 backdrop-blur">
+        <a
+          href="https://github.com/BODMAT/worktrace"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] font-bold tracking-widest text-muted transition-colors hover:text-cyan"
+        >
+          GITHUB · RELEASES
+        </a>
+      </footer>
     </div>
   );
 }

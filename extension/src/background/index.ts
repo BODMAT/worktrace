@@ -48,15 +48,18 @@ function isExpired(expiresAt: number): boolean {
   return Date.now() >= expiresAt - EXPIRY_BUFFER_MS;
 }
 
-function decodeEmail(jwt: string): string | null {
+function decodeJwtPayload(jwt: string): { email?: string; exp?: number } | null {
   try {
     const payloadB64 = jwt.split(".")[1];
     if (!payloadB64) return null;
-    const payload = JSON.parse(atob(payloadB64)) as { email?: string };
-    return payload.email ?? null;
+    return JSON.parse(atob(payloadB64)) as { email?: string; exp?: number };
   } catch {
     return null;
   }
+}
+
+function decodeEmail(jwt: string): string | null {
+  return decodeJwtPayload(jwt)?.email ?? null;
 }
 
 // ─── Google OAuth ──────────────────────────────────────────────────────────────
@@ -101,9 +104,9 @@ async function exchangeForJWT(googleIdToken: string): Promise<StoredAuth> {
   }
 
   const { token } = await res.json() as { token: string };
-  const payloadB64 = token.split(".")[1] ?? "";
-  const { exp } = JSON.parse(atob(payloadB64)) as { exp: number };
-  return { jwt: token, jwtExpiresAt: exp * 1000 };
+  const payload = decodeJwtPayload(token);
+  if (!payload?.exp) throw new Error("JWT missing exp claim");
+  return { jwt: token, jwtExpiresAt: payload.exp * 1000 };
 }
 
 // ─── Core ──────────────────────────────────────────────────────────────────────
@@ -163,6 +166,17 @@ async function tryEndDbSession(dbSessionId: string): Promise<void> {
   }
 }
 
+// ─── Music helpers ────────────────────────────────────────────────────────────
+
+const TRACK_SOURCE_DOMAINS: Record<TrackInfo["source"], string> = {
+  "youtube-music": "music.youtube.com",
+  "soundcloud":    "soundcloud.com",
+};
+
+async function isTrackBlocked(track: TrackInfo): Promise<boolean> {
+  return isDomainBlocked(`https://${TRACK_SOURCE_DOMAINS[track.source]}`);
+}
+
 // ─── Music: pull track from active tab ────────────────────────────────────────
 
 // Returns current playbackTime from the music tab without any side effects.
@@ -204,10 +218,7 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
     const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
     if (track) {
       // Blocklist check before storing or persisting to DB
-      const sourceUrl = `https://${
-        track.source === "youtube-music" ? "music.youtube.com" : "soundcloud.com"
-      }`;
-      const blocked = await isDomainBlocked(sourceUrl);
+      const blocked = await isTrackBlocked(track);
       if (blocked) return null;
 
       await chrome.storage.local.set({ currentTrack: track });
@@ -355,7 +366,11 @@ chrome.runtime.onMessage.addListener(
             session: { ...session, elapsedMs: getElapsedMs(session) },
           });
           // Fire-and-forget DB session creation — retried by sync alarm if it fails
-          if (!session.dbSessionId) void ensureDbSession();
+          if (!session.dbSessionId) {
+            ensureDbSession().catch((err) =>
+              console.warn("[worktrace] ensureDbSession failed:", err),
+            );
+          }
         })
         .catch((err: unknown) =>
           sendResponse({
@@ -494,13 +509,8 @@ chrome.runtime.onMessage.addListener(
       const track = message.payload;
 
       // Background-level blocklist check: second line of defence after content script
-      // Derive the domain from the known source → hostname mapping
-      const trackSourceDomain: Record<TrackInfo["source"], string> = {
-        "youtube-music": "music.youtube.com",
-        "soundcloud":    "soundcloud.com",
-      };
       void (async () => {
-        const blocked = await isDomainBlocked(`https://${trackSourceDomain[track.source]}`);
+        const blocked = await isTrackBlocked(track);
         if (blocked) return;
 
         void chrome.storage.local.set({ currentTrack: track });
@@ -620,6 +630,9 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    // Exhaustiveness guard — TypeScript compile error if a new message type is added without a handler
+    const _exhaustive: never = message;
+    void _exhaustive;
     return false;
   },
 );
