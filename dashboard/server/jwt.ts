@@ -1,5 +1,4 @@
 import type { NextRequest } from "next/server";
-import jwt from "jsonwebtoken";
 import { jwtVerify } from "jose";
 import { SESSION_COOKIE } from "@/server/cookies";
 
@@ -21,13 +20,16 @@ function isPayload(v: unknown): v is JwtPayload {
   return typeof r["sub"] === "string" && typeof r["email"] === "string";
 }
 
-export async function verifyJwt(token: string): Promise<JwtPayload> {
-  const secret = process.env.JWT_SECRET;
+function getSecretKey(): Uint8Array {
+  const secret = process.env["JWT_SECRET"];
   if (!secret) throw new Error("JWT_SECRET is not set");
+  return new TextEncoder().encode(secret);
+}
 
+export async function verifyJwt(token: string): Promise<JwtPayload> {
   let payload: unknown;
   try {
-    const result = await jwtVerify(token, new TextEncoder().encode(secret));
+    const result = await jwtVerify(token, getSecretKey());
     payload = result.payload;
   } catch {
     throw new UnauthorizedError("Invalid or expired token");
@@ -45,20 +47,9 @@ function extractToken(req: NextRequest): string | null {
   return req.cookies.get(SESSION_COOKIE)?.value ?? null;
 }
 
-export function requireUser(req: NextRequest): { id: string; email: string } {
+export async function requireUser(req: NextRequest): Promise<{ id: string; email: string }> {
   const token = extractToken(req);
   if (!token) throw new UnauthorizedError("Missing authentication credentials");
-
-  const secret = process.env.JWT_SECRET;
-  if (!secret) throw new Error("JWT_SECRET is not set");
-
-  let decoded: unknown;
-  try {
-    decoded = jwt.verify(token, secret);
-  } catch {
-    throw new UnauthorizedError("Invalid or expired token");
-  }
-  if (!isPayload(decoded)) throw new UnauthorizedError("Invalid token payload");
-
-  return { id: decoded.sub, email: decoded.email };
+  const payload = await verifyJwt(token);
+  return { id: payload.sub, email: payload.email };
 }

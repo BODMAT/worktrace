@@ -12,7 +12,7 @@ import { apiError } from "@/server/api-error";
 export const GET = withCors(async (req) => {
   let user;
   try {
-    user = requireUser(req);
+    user = await requireUser(req);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return apiError("UNAUTHORIZED", err.message, 401);
@@ -33,7 +33,7 @@ export const GET = withCors(async (req) => {
 export const POST = withCors(async (req) => {
   let user;
   try {
-    user = requireUser(req);
+    user = await requireUser(req);
   } catch (err) {
     if (err instanceof UnauthorizedError) {
       return apiError("UNAUTHORIZED", err.message, 401);

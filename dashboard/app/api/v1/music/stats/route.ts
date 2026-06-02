@@ -22,7 +22,7 @@ export const GET = withCors(async (req: NextRequest) => {
     if (cookie) {
       userId = cookie.id;
     } else {
-      userId = requireUser(req).id;
+      userId = (await requireUser(req)).id;
     }
   } catch (err) {
     if (err instanceof UnauthorizedError) {
