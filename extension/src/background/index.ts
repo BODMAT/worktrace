@@ -519,6 +519,11 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
+    if (message.type === "TRACK_STOP") {
+      void endCurrentDbTrack();
+      return false;
+    }
+
     if (message.type === "TRACK_GET_CURRENT") {
       (async () => {
         const r       = await chrome.storage.local.get("currentTrack");

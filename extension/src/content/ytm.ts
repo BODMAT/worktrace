@@ -152,3 +152,9 @@ chrome.runtime.onMessage.addListener(
 
 sendIfChanged(parseTrack());
 observeChanges();
+
+// Notify background to close the DB track record when the tab is closed/navigated.
+// pagehide fires for both tab close and navigation (unlike beforeunload).
+window.addEventListener("pagehide", () => {
+  chrome.runtime.sendMessage({ type: "TRACK_STOP" } satisfies MusicMessage).catch(() => {});
+});

@@ -10,7 +10,8 @@ export interface TrackInfo {
 
 export type MusicMessage =
   | { type: "TRACK_CAPTURED";  payload: TrackInfo }
-  | { type: "TRACK_GET_CURRENT" };
+  | { type: "TRACK_GET_CURRENT" }
+  | { type: "TRACK_STOP" };
 
 export type MusicResponse =
   | { success: true;  track: TrackInfo | null }
