@@ -1,0 +1,42 @@
+name: Release extension
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Build extension
+        working-directory: extension
+        run: npm ci && npm run build
+
+      - name: Package extension
+        working-directory: extension
+        shell: pwsh
+        run: Compress-Archive -Path dist/* -DestinationPath worktrace-extension.zip -Force
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "extension-build-${{ github.run_number }}" \
+            extension/worktrace-extension.zip \
+            --title "WorkTrace Extension — build ${{ github.run_number }}" \
+            --notes "Автоматичний реліз при мерджі в main.
+
+          Щоб завантажити розширення:
+          1. Скачай \`worktrace-extension.zip\`
+          2. Розпакуй у будь-яку папку
+          3. chrome://extensions → Developer mode → Load unpacked → обери розпаковану папку"
