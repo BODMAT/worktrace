@@ -630,6 +630,9 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    // Exhaustiveness guard — TypeScript compile error if a new message type is added without a handler
+    const _exhaustive: never = message;
+    void _exhaustive;
     return false;
   },
 );
