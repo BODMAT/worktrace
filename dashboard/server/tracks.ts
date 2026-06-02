@@ -1,6 +1,17 @@
 import type { CreateTrackInput, UpdateTrackInput } from "./schemas/tracks";
 import { prisma } from "./db";
 
+export async function closeStaleTracksForClosedSessions(): Promise<number> {
+  return prisma.$executeRaw`
+    UPDATE "Track" t
+    SET    "endedAt" = s."endedAt"
+    FROM   "Session" s
+    WHERE  t."sessionId" = s.id
+      AND  t."endedAt"   IS NULL
+      AND  s."endedAt"   IS NOT NULL
+  `;
+}
+
 export class SessionNotFoundError extends Error {
   constructor() {
     super("Session not found");

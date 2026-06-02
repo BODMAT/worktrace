@@ -2,6 +2,24 @@ import { Prisma } from "@/generated/prisma/client";
 import type { TopSession } from "@/types/event";
 import { prisma } from "./db";
 
+export async function closeStaleSessions(
+  thresholdMinutes: number,
+): Promise<{ closed: number; deleted: number }> {
+  const { count: deleted } = await prisma.session.deleteMany({
+    where: { endedAt: null, events: { none: {} } },
+  });
+
+  const closed = await prisma.$executeRaw(Prisma.sql`
+    UPDATE "Session" s
+    SET    "endedAt" = (SELECT MAX(e."timestamp") FROM "Event" e WHERE e."sessionId" = s.id)
+    WHERE  s."endedAt" IS NULL
+      AND  (SELECT MAX(e."timestamp") FROM "Event" e WHERE e."sessionId" = s.id)
+             < NOW() - (${thresholdMinutes} || ' minutes')::interval
+  `);
+
+  return { closed, deleted };
+}
+
 export class SessionNotFoundError extends Error {
   constructor() {
     super("Session not found");
