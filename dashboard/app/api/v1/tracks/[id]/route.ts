@@ -13,7 +13,7 @@ export function PATCH(req: NextRequest, ctx: RouteContext): Promise<NextResponse
   return withCors(async (r) => {
     let user;
     try {
-      user = requireUser(r);
+      user = await requireUser(r);
     } catch (err) {
       if (err instanceof UnauthorizedError) {
         return apiError("UNAUTHORIZED", err.message, 401);

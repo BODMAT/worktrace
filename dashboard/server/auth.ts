@@ -1,5 +1,5 @@
 import { OAuth2Client } from "google-auth-library";
-import jwt from "jsonwebtoken";
+import { SignJWT } from "jose";
 import { prisma } from "@/server/db";
 
 function requireEnv(name: string): string {
@@ -41,13 +41,14 @@ async function upsertUser(data: {
   });
 }
 
-function issueJWT(userId: string, email: string): string {
-  const expiresIn = (process.env.JWT_EXPIRES_IN ?? "7d") as jwt.SignOptions["expiresIn"];
-  return jwt.sign(
-    { sub: userId, email },
-    requireEnv("JWT_SECRET"),
-    { expiresIn },
-  );
+async function issueJWT(userId: string, email: string): Promise<string> {
+  const secret    = requireEnv("JWT_SECRET");
+  const expiresIn = process.env["JWT_EXPIRES_IN"] ?? "7d";
+  return new SignJWT({ sub: userId, email })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(expiresIn)
+    .sign(new TextEncoder().encode(secret));
 }
 
 export async function authenticateGoogleUser(googleIdToken: string): Promise<string> {
