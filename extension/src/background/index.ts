@@ -166,6 +166,17 @@ async function tryEndDbSession(dbSessionId: string): Promise<void> {
   }
 }
 
+// ─── Music helpers ────────────────────────────────────────────────────────────
+
+const TRACK_SOURCE_DOMAINS: Record<TrackInfo["source"], string> = {
+  "youtube-music": "music.youtube.com",
+  "soundcloud":    "soundcloud.com",
+};
+
+async function isTrackBlocked(track: TrackInfo): Promise<boolean> {
+  return isDomainBlocked(`https://${TRACK_SOURCE_DOMAINS[track.source]}`);
+}
+
 // ─── Music: pull track from active tab ────────────────────────────────────────
 
 // Returns current playbackTime from the music tab without any side effects.
@@ -207,10 +218,7 @@ async function queryActiveTabForTrack(): Promise<TrackInfo | null> {
     const track = await chrome.tabs.sendMessage(tab.id, { type: "TRACK_REQUEST" }) as TrackInfo | null;
     if (track) {
       // Blocklist check before storing or persisting to DB
-      const sourceUrl = `https://${
-        track.source === "youtube-music" ? "music.youtube.com" : "soundcloud.com"
-      }`;
-      const blocked = await isDomainBlocked(sourceUrl);
+      const blocked = await isTrackBlocked(track);
       if (blocked) return null;
 
       await chrome.storage.local.set({ currentTrack: track });
@@ -501,13 +509,8 @@ chrome.runtime.onMessage.addListener(
       const track = message.payload;
 
       // Background-level blocklist check: second line of defence after content script
-      // Derive the domain from the known source → hostname mapping
-      const trackSourceDomain: Record<TrackInfo["source"], string> = {
-        "youtube-music": "music.youtube.com",
-        "soundcloud":    "soundcloud.com",
-      };
       void (async () => {
-        const blocked = await isDomainBlocked(`https://${trackSourceDomain[track.source]}`);
+        const blocked = await isTrackBlocked(track);
         if (blocked) return;
 
         void chrome.storage.local.set({ currentTrack: track });
