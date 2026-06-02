@@ -26,11 +26,11 @@ The two apps are isolated — `extension/` never imports from `dashboard/` and v
 ## Tech stack
 
 - **Dashboard** — Next.js 16 (App Router, Server Components), React 19, Tailwind CSS v4, TanStack Query v5, Framer Motion, D3.js
-- **Backend** — Next.js Route Handlers, Prisma 7 (with `@prisma/adapter-pg`), Zod, `google-auth-library`, `jsonwebtoken`
+- **Backend** — Next.js Route Handlers, Prisma 7 (with `@prisma/adapter-pg`), Zod, `google-auth-library`, `jose`
 - **Extension** — Manifest V3, Vite 7 + `@crxjs/vite-plugin`, TypeScript (strict)
 - **Database** — PostgreSQL 16 (Docker for local, Neon for production)
-- **AI** — LLM provider TBD (Week 3): OpenAI / Groq / Gemini / OpenRouter
-- **Deploy** — Vercel (dashboard), `.zip` for local extension install
+- **AI** — Groq (`llama-3.3-70b-versatile`), з можливістю вказати власний API ключ у налаштуваннях
+- **Deploy** — Vercel (dashboard), `.zip` для локального завантаження extension
 
 Versions in `dashboard/package.json` and `extension/package.json` are authoritative.
 
@@ -51,7 +51,7 @@ cp dashboard/.env.example dashboard/.env
 cp extension/.env.example extension/.env
 ```
 
-The dashboard `.env` contains `DATABASE_URL` (already pointing at the docker-compose Postgres) plus `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET`. The Google/JWT values are **not required for Week 1** — leave them blank until the auth flow lands in Week 2.
+The dashboard `.env` contains `DATABASE_URL` (already pointing at the docker-compose Postgres) plus `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `JWT_SECRET`, `GROQ_API_KEY`, and `CRON_SECRET`. See comments in `.env.example` for how to generate each value.
 
 ### 2. Start PostgreSQL
 
@@ -89,19 +89,33 @@ Then in Chrome:
 
 The extension card should appear with no errors. For HMR-rebuild during active development use `npm run dev` instead of `npm run build`.
 
+### Load from `.zip` (without source code)
+
+```bash
+cd extension
+npm run zip          # builds and creates worktrace-extension.zip
+```
+
+Then in Chrome:
+
+1. Unzip `worktrace-extension.zip` to any folder
+2. Open `chrome://extensions` → **Developer mode** → **Load unpacked**
+3. Select the unzipped folder
+
 ## Verifying it works
 
-1. **Dashboard** — `http://localhost:3000` loads (Next.js placeholder page is fine for Week 1).
-2. **Extension** — the card on `chrome://extensions` shows no errors; clicking the toolbar icon opens an empty popup; the service worker logs `[worktrace] installed` (visible via the extension's **Inspect** link).
-3. **API** — a POST to the events endpoint round-trips through Postgres:
+1. **Dashboard** — відкрий `http://localhost:3000`, натисни "Sign in with Google" → має відкритись `/dashboard` з даними.
+2. **Extension** — картка на `chrome://extensions` без помилок; іконка в тулбарі відкриває popup; сервіс воркер логує `[worktrace] installed` (видно через **Inspect** посилання розширення).
+3. **API** — Bearer токен з extension працює:
 
    ```bash
    curl -X POST http://localhost:3000/api/v1/events \
      -H "Content-Type: application/json" \
-     -d '{"sessionId":"ctestsess0000000000000001","url":"https://example.com","title":"Hello","tags":["test"],"timestamp":"2026-05-15T12:00:00Z"}'
+     -H "Authorization: Bearer <jwt-from-extension-storage>" \
+     -d '{"sessionId":"<active-session-id>","url":"https://github.com","title":"Test","timestamp":"2026-06-01T10:00:00Z"}'
    ```
 
-   A 201 response with the created event means the dashboard, Prisma, and Postgres are wired up correctly. (The `sessionId` must reference an existing `Session` row — create one via `npx prisma studio` or seed it manually.)
+   Відповідь `201` означає що dashboard, Prisma і Postgres з'єднані коректно.
 
 ## Project docs
 
@@ -113,4 +127,4 @@ The extension card should appear with no errors. For HMR-rebuild during active d
 ## Deploy
 
 - **Dashboard** — Vercel with **Root Directory: `dashboard`**. The build command `prisma generate && next build` (declared in `dashboard/package.json`) regenerates the Prisma client at build time since `dashboard/generated/` is gitignored. Production database is Neon.
-- **Extension** — distributed as a `.zip` of `extension/dist/` for local install. Chrome Web Store packaging is scheduled for Week 4 AC 2.
+- **Extension** — `npm run zip` inside `extension/` builds and packages `dist/` into `worktrace-extension.zip`. Load unpacked in Chrome via Developer mode.
