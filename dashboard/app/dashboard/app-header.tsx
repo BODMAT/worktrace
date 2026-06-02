@@ -52,7 +52,7 @@ export function AppHeader({ email, name, picture }: Props) {
         >
           {displayName}
         </span>
-        <AccountMenu />
+        <AccountMenu userEmail={email} />
         <MobileNav />
       </div>
     </header>

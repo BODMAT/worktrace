@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { useRouter } from "next/navigation";
@@ -22,16 +22,39 @@ const panel = {
   transition: { type: "spring" as const, stiffness: 400, damping: 28, mass: 0.8 },
 };
 
-export function AccountMenu() {
+// Remove all cached report keys for a given email (or all wt:report:* keys)
+function clearReportCache(email: string) {
+  try {
+    const prefix = `wt:report:${email.toLowerCase().trim()}:`;
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(prefix))
+      .forEach((k) => localStorage.removeItem(k));
+  } catch { /* localStorage unavailable */ }
+}
+
+export function AccountMenu({ userEmail }: { userEmail: string }) {
   const router      = useRouter();
   const queryClient = useQueryClient();
-  const [menu,    setMenu]    = useState<Menu>(null);
-  const [pending, setPending] = useState(false);
+  const [menu,      setMenu]      = useState<Menu>(null);
+  const [pending,   setPending]   = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
+
+  // Escape key closes the active modal
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (menu === "delete-confirm") setMenu("account");
+      else if (menu === "account") setMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menu]);
 
   async function handleLogout() {
     setPending(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });
+      clearReportCache(userEmail);
     } finally {
       queryClient.clear();
       router.replace("/login");
@@ -41,21 +64,25 @@ export function AccountMenu() {
 
   async function handleDelete() {
     setPending(true);
+    setDeleteErr(null);
     try {
       const res = await fetch("/api/auth/delete-account", { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete account");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      clearReportCache(userEmail);
       queryClient.clear();
       router.replace("/login");
       router.refresh();
-    } catch {
+    } catch (err) {
+      setDeleteErr(err instanceof Error ? err.message : "Failed to delete account");
       setPending(false);
-      setMenu("account");
     }
   }
 
   return (
     <>
-      {/* Trigger — same style as the old LogoutButton */}
       <button
         type="button"
         onClick={() => setMenu("account")}
@@ -66,7 +93,7 @@ export function AccountMenu() {
         ⎋
       </button>
 
-      {typeof window !== "undefined" && createPortal(
+      {createPortal(
         <AnimatePresence mode="wait">
 
           {/* ── Modal 1: account options ── */}
@@ -104,7 +131,7 @@ export function AccountMenu() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setMenu("delete-confirm")}
+                      onClick={() => { setDeleteErr(null); setMenu("delete-confirm"); }}
                       disabled={pending}
                       className="w-full cursor-pointer rounded border border-pink/40 px-4 py-2.5 text-[10px] font-bold tracking-widest text-pink transition-colors hover:bg-pink/10 disabled:opacity-50"
                     >
@@ -144,6 +171,10 @@ export function AccountMenu() {
                     This will <span className="text-pink">permanently delete</span> all your events,
                     sessions, music data, and settings. This action cannot be undone.
                   </p>
+
+                  {deleteErr ? (
+                    <p className="mb-3 text-[11px] text-pink">{deleteErr}</p>
+                  ) : null}
 
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <button
