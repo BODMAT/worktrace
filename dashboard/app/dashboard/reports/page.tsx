@@ -18,7 +18,7 @@ export default async function ReportsPage() {
       <div className="flex items-baseline justify-between">
         <h1 className="text-base font-bold tracking-widest text-cyan">AI SESSION REPORT</h1>
       </div>
-      <ReportForm />
+      <ReportForm userEmail={user.email} />
     </div>
   );
 }
