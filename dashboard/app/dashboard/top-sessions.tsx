@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import type { TopSession } from "@/types/event";
 import { fetchTopSessions, topSessionsQueryKey } from "./feed-shared";
 import { useClientLocalized } from "./use-client-localized";
@@ -104,9 +105,11 @@ function SessionRow({ session }: { session: TopSession }) {
             </span>
           </div>
           <div className="ml-3 h-1 overflow-hidden rounded-sm bg-border">
-            <div
+            <motion.div
               className="h-full bg-purple"
-              style={{ width: `${(ratio * 100).toFixed(1)}%` }}
+              initial={{ width: 0 }}
+              animate={{ width: `${(ratio * 100).toFixed(1)}%` }}
+              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
             />
           </div>
         </>
