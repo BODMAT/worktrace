@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider, useToast } from "@/components/toast";
+import { SmoothScroll } from "@/components/smooth-scroll";
 
 function QueryProviderInner({ children }: { children: React.ReactNode }) {
   const toast = useToast();
@@ -33,8 +34,10 @@ function QueryProviderInner({ children }: { children: React.ReactNode }) {
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <ToastProvider>
-      <QueryProviderInner>{children}</QueryProviderInner>
-    </ToastProvider>
+    <SmoothScroll>
+      <ToastProvider>
+        <QueryProviderInner>{children}</QueryProviderInner>
+      </ToastProvider>
+    </SmoothScroll>
   );
 }

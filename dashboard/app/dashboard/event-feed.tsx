@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useLenis } from "lenis/react";
 import { EventCard } from "./event-card";
 import {
   eventsQueryKey,
@@ -39,6 +40,12 @@ export function EventFeed({ filters, onClearFilters }: Props) {
   );
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const lenis = useLenis();
+
+  // After each new batch loads, tell Lenis the page height changed
+  useEffect(() => {
+    lenis?.resize();
+  }, [data?.pages.length, lenis]);
 
   useEffect(() => {
     const el = sentinelRef.current;
