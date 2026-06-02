@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,36 +81,40 @@ function ToastStack({
   toasts: ToastItem[];
   onDismiss: (id: number) => void;
 }) {
-  if (toasts.length === 0) return null;
-
   return (
     <div
       aria-live="polite"
       aria-label="Notifications"
       className="pointer-events-none fixed bottom-4 right-4 z-50 flex flex-col gap-2"
     >
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          role="alert"
-          className={
-            "pointer-events-auto flex items-start gap-3 rounded border px-4 py-3 text-xs shadow-lg " +
-            (t.variant === "error"
-              ? "border-pink/40 bg-surface text-pink"
-              : "border-cyan/40 bg-surface text-cyan")
-          }
-        >
-          <span className="flex-1">{t.message}</span>
-          <button
-            type="button"
-            onClick={() => onDismiss(t.id)}
-            className="mt-0.5 shrink-0 cursor-pointer opacity-60 hover:opacity-100"
-            aria-label="Dismiss"
+      <AnimatePresence mode="popLayout">
+        {toasts.map((t) => (
+          <motion.div
+            key={t.id}
+            role="alert"
+            initial={{ opacity: 0, x: 120, scale: 0.95 }}
+            animate={{ opacity: 1, x: 0,   scale: 1    }}
+            exit={{    opacity: 0, x: 120,  scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className={
+              "pointer-events-auto flex items-start gap-3 rounded border px-4 py-3 text-xs shadow-lg " +
+              (t.variant === "error"
+                ? "border-pink/40 bg-surface text-pink"
+                : "border-cyan/40 bg-surface text-cyan")
+            }
           >
-            ✕
-          </button>
-        </div>
-      ))}
+            <span className="flex-1">{t.message}</span>
+            <button
+              type="button"
+              onClick={() => onDismiss(t.id)}
+              className="mt-0.5 shrink-0 cursor-pointer opacity-60 hover:opacity-100"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
