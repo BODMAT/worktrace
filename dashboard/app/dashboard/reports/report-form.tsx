@@ -26,7 +26,34 @@ type Status =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "error";   message: string }
-  | { kind: "success"; result: GenerateReportResponse };
+  | { kind: "success"; result: GenerateReportResponse; createdAt: string };
+
+// ─── localStorage cache ───────────────────────────────────────────────────────
+
+type CachedReport = { result: GenerateReportResponse; createdAt: string };
+
+function reportCacheKey(range: RangePreset, from: string, to: string): string {
+  return range === "custom"
+    ? `wt:report:custom:${from}:${to}`
+    : `wt:report:${range}`;
+}
+
+function loadCache(key: string): CachedReport | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as CachedReport) : null;
+  } catch { return null; }
+}
+
+function saveCache(key: string, data: CachedReport): void {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* quota */ }
+}
+
+function fmtCreatedAt(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
 
 function todayISO(): string {
   const d = new Date();
@@ -53,7 +80,14 @@ export function ReportForm() {
   const [range,     setRange]     = useState<RangePreset>("last_7d");
   const [from,      setFrom]      = useState<string>("");
   const [to,        setTo]        = useState<string>(todayISO());
-  const [status,    setStatus]    = useState<Status>({ kind: "idle" });
+  // Lazy init: read localStorage for the default range before first render
+  const [status, setStatus] = useState<Status>(() => {
+    try {
+      const cached = loadCache(reportCacheKey("last_7d", "", ""));
+      if (cached) return { kind: "success", result: cached.result, createdAt: cached.createdAt };
+    } catch { /* localStorage unavailable (SSR guard) */ }
+    return { kind: "idle" };
+  });
   const [apiKey,    setApiKey]    = useState<UserSettingsView | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -64,6 +98,35 @@ export function ReportForm() {
       .catch(() => { if (!cancelled) setApiKey({ hasGroqApiKey: false, last4: null }); });
     return () => { cancelled = true; };
   }, []);
+
+  // Range button click — load cache in the event handler (not in an effect)
+  function handleRangeChange(newRange: RangePreset) {
+    setRange(newRange);
+    if (newRange === "custom") return;
+    const cached = loadCache(reportCacheKey(newRange, "", ""));
+    setStatus(cached
+      ? { kind: "success", result: cached.result, createdAt: cached.createdAt }
+      : { kind: "idle" });
+  }
+
+  // Custom date changes — check cache when both dates are present
+  function handleFromChange(newFrom: string) {
+    setFrom(newFrom);
+    if (!newFrom || !to) { setStatus({ kind: "idle" }); return; }
+    const cached = loadCache(reportCacheKey("custom", newFrom, to));
+    setStatus(cached
+      ? { kind: "success", result: cached.result, createdAt: cached.createdAt }
+      : { kind: "idle" });
+  }
+
+  function handleToChange(newTo: string) {
+    setTo(newTo);
+    if (!from || !newTo) { setStatus({ kind: "idle" }); return; }
+    const cached = loadCache(reportCacheKey("custom", from, newTo));
+    setStatus(cached
+      ? { kind: "success", result: cached.result, createdAt: cached.createdAt }
+      : { kind: "idle" });
+  }
 
   const isCustom = range === "custom";
   const isBusy   = status.kind === "loading";
@@ -81,7 +144,9 @@ export function ReportForm() {
     }
     try {
       const result = await generateReport(input);
-      setStatus({ kind: "success", result });
+      const createdAt = new Date().toISOString();
+      saveCache(reportCacheKey(range, from, to), { result, createdAt });
+      setStatus({ kind: "success", result, createdAt });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to generate report";
       setStatus({ kind: "error", message });
@@ -116,7 +181,7 @@ export function ReportForm() {
             <button
               key={p.value}
               type="button"
-              onClick={() => setRange(p.value)}
+              onClick={() => handleRangeChange(p.value)}
               disabled={isBusy}
               className={
                 "cursor-pointer rounded border px-3 py-1.5 text-[10px] font-bold tracking-widest transition-colors disabled:cursor-not-allowed disabled:opacity-50 " +
@@ -131,22 +196,13 @@ export function ReportForm() {
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {status.kind === "success" ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setStatus({ kind: "idle" })}
-                  className="cursor-pointer rounded border border-muted px-3 py-1.5 text-[10px] font-bold tracking-widest text-muted transition-colors hover:border-pink hover:text-pink"
-                >
-                  NEW REPORT
-                </button>
-                <button
-                  type="button"
-                  onClick={() => downloadMarkdown(status.result.markdown, status.result.range.label)}
-                  className="cursor-pointer rounded border border-cyan px-3 py-1.5 text-[10px] font-bold tracking-widest text-cyan transition-colors hover:bg-cyan/10"
-                >
-                  DOWNLOAD .MD
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={() => downloadMarkdown(status.result.markdown, status.result.range.label)}
+                className="cursor-pointer rounded border border-cyan px-3 py-1.5 text-[10px] font-bold tracking-widest text-cyan transition-colors hover:bg-cyan/10"
+              >
+                DOWNLOAD .MD
+              </button>
             ) : null}
             <button
               type="button"
@@ -166,7 +222,7 @@ export function ReportForm() {
                 type="date"
                 value={from}
                 max={to || todayISO()}
-                onChange={(e) => setFrom(e.target.value)}
+                onChange={(e) => handleFromChange(e.target.value)}
                 disabled={isBusy}
                 className={INPUT_CLASS}
               />
@@ -177,7 +233,7 @@ export function ReportForm() {
                 value={to}
                 min={from || undefined}
                 max={todayISO()}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={(e) => handleToChange(e.target.value)}
                 disabled={isBusy}
                 className={INPUT_CLASS}
               />
@@ -188,7 +244,7 @@ export function ReportForm() {
 
       {status.kind === "loading" ? <LoadingPanel /> : null}
       {status.kind === "error"   ? <ErrorPanel message={status.message} onRetry={handleGenerate} /> : null}
-      {status.kind === "success" ? <ResultPanel result={status.result} /> : null}
+      {status.kind === "success" ? <ResultPanel result={status.result} createdAt={status.createdAt} /> : null}
 
       {apiKey ? (
         <ApiKeyModal
@@ -268,7 +324,7 @@ function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-function ResultPanel({ result }: { result: GenerateReportResponse }) {
+function ResultPanel({ result, createdAt }: { result: GenerateReportResponse; createdAt: string }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2 text-[10px] tracking-widest">
@@ -283,6 +339,9 @@ function ResultPanel({ result }: { result: GenerateReportResponse }) {
         </span>
         <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
           MODEL <span className="ml-1 text-purple">{result.model}</span>
+        </span>
+        <span className="rounded border border-border bg-surface px-2.5 py-1 text-muted">
+          GENERATED <span className="ml-1 text-muted/70">{fmtCreatedAt(createdAt)}</span>
         </span>
       </div>
       <MarkdownView markdown={result.markdown} />
