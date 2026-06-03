@@ -33,6 +33,7 @@ export function EventFeed({ filters, onClearFilters }: Props) {
     getNextPageParam: (last) => last.nextCursor,
     placeholderData:  keepPreviousData,
     staleTime:        30_000,
+    refetchInterval:  30_000,
   });
 
   const events = useMemo(
