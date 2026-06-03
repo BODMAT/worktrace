@@ -28,9 +28,10 @@ function localDay(iso: string): string {
 
 export function TopSessions() {
   const { data, isLoading, isError } = useQuery({
-    queryKey:  topSessionsQueryKey,
-    queryFn:   fetchTopSessions,
-    staleTime: 30_000,
+    queryKey:        topSessionsQueryKey,
+    queryFn:         fetchTopSessions,
+    staleTime:       30_000,
+    refetchInterval: 30_000,
   });
 
   if (isLoading) {

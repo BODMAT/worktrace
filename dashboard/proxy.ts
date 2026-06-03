@@ -6,7 +6,7 @@ export const config = {
   matcher: ["/dashboard/:path*", "/login"],
 };
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const token  = req.cookies.get(SESSION_COOKIE)?.value;
   const isAuth = token ? await isValid(token) : false;
 

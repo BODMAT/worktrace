@@ -12,6 +12,10 @@ function hostnameOf(url: string): string {
   }
 }
 
+function isHttpUrl(url: string): boolean {
+  return url.startsWith("http://") || url.startsWith("https://");
+}
+
 function utcShort(iso: string): string {
   return iso.slice(0, 16).replace("T", " ") + " UTC";
 }
@@ -36,15 +40,21 @@ export function EventCard({ event }: { event: EventDTO }) {
       whileHover={{ scale: 1.012, transition: { duration: 0.15 } }}
     >
       <div className="flex items-baseline justify-between gap-3">
-        <a
-          href={event.url}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="cursor-pointer truncate text-sm font-bold text-text transition-colors hover:text-cyan"
-          title={event.title}
-        >
-          {event.title}
-        </a>
+        {isHttpUrl(event.url) ? (
+          <a
+            href={event.url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="cursor-pointer truncate text-sm font-bold text-text transition-colors hover:text-cyan"
+            title={event.title}
+          >
+            {event.title}
+          </a>
+        ) : (
+          <span className="truncate text-sm font-bold text-text" title={event.title}>
+            {event.title}
+          </span>
+        )}
         <time
           className="shrink-0 text-[10px] text-muted"
           dateTime={event.timestamp}
@@ -55,7 +65,18 @@ export function EventCard({ event }: { event: EventDTO }) {
 
       <div className="flex items-center gap-2 text-[11px] text-muted">
         <span className="text-purple">⟶</span>
-        <span className="truncate">{hostnameOf(event.url)}</span>
+        {isHttpUrl(event.url) ? (
+          <a
+            href={event.url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="truncate transition-colors hover:text-cyan"
+          >
+            {hostnameOf(event.url)}
+          </a>
+        ) : (
+          <span className="truncate">{hostnameOf(event.url)}</span>
+        )}
       </div>
 
       {event.content ? (

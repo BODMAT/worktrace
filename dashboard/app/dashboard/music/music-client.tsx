@@ -56,8 +56,9 @@ export function MusicClient() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey:        ["music-stats", range],
     queryFn:         () => fetchMusicStats(range),
-    placeholderData: keepPreviousData,
-    staleTime:       60_000,
+    placeholderData:  keepPreviousData,
+    staleTime:        60_000,
+    refetchInterval:  60_000,
   });
 
   return (

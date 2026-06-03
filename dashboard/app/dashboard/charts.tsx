@@ -36,8 +36,9 @@ export function Charts({ filters }: { filters: FeedFilters }) {
   const { data, isLoading, isError } = useQuery({
     queryKey:        statsQueryKey(filters),
     queryFn:         () => fetchEventStats(filters),
-    placeholderData: keepPreviousData,
-    staleTime:       30_000,
+    placeholderData:  keepPreviousData,
+    staleTime:        30_000,
+    refetchInterval:  30_000,
   });
 
   if (isLoading) {

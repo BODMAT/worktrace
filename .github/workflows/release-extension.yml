@@ -18,25 +18,33 @@ jobs:
           cache: "npm"
           cache-dependency-path: extension/package-lock.json
 
+      - name: Get version
+        id: version
+        run: echo "version=$(node -p "require('./extension/package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Build extension
         working-directory: extension
         run: npm ci && npm run build
 
       - name: Package extension
         working-directory: extension
-        shell: pwsh
-        run: Compress-Archive -Path dist/* -DestinationPath worktrace-extension.zip -Force
+        run: zip -r "worktrace-extension-v${{ steps.version.outputs.version }}.zip" dist/
 
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "extension-build-${{ github.run_number }}" \
-            extension/worktrace-extension.zip \
-            --title "WorkTrace Extension — build ${{ github.run_number }}" \
+          VERSION="v${{ steps.version.outputs.version }}"
+          if gh release view "$VERSION" &>/dev/null; then
+            echo "Release $VERSION already exists — skipping."
+            exit 0
+          fi
+          gh release create "$VERSION" \
+            "extension/worktrace-extension-$VERSION.zip" \
+            --title "WorkTrace Extension $VERSION" \
             --notes "Автоматичний реліз при мерджі в main.
 
           Щоб завантажити розширення:
-          1. Скачай \`worktrace-extension.zip\`
+          1. Скачай \`worktrace-extension-$VERSION.zip\`
           2. Розпакуй у будь-яку папку
           3. chrome://extensions → Developer mode → Load unpacked → обери розпаковану папку"

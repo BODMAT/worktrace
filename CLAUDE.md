@@ -36,7 +36,7 @@ and generating AI session reports.
 ## Auth
 Auth logic lives ONLY in:
 - `dashboard/app/api/auth/**/route.ts` — Google token verification, JWT issuance
-- `dashboard/middleware.ts` — route guarding for `/dashboard/*`
+- `dashboard/proxy.ts` — route guarding for `/dashboard/*`
 
 Do NOT duplicate auth checks in components, server modules, or other Route Handlers.
 
