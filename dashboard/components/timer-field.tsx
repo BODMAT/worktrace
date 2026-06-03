@@ -72,6 +72,10 @@ export function TimerField() {
     function resize() {
       c.width  = window.innerWidth;
       c.height = window.innerHeight;
+      for (const t of timersRef.current) {
+        t.x = Math.random() * c.width;
+        t.y = Math.random() * c.height;
+      }
     }
     resize();
     window.addEventListener("resize", resize);

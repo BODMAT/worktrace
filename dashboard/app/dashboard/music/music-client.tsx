@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { animate } from "framer-motion";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useLenis } from "lenis/react";
 import type { MusicStats } from "@/types/music-stats";
 import { TopArtistsChart } from "./top-artists-chart";
 import { ProductivityChart } from "./productivity-chart";
@@ -52,6 +53,7 @@ function fmtListened(ms: number): string {
 
 export function MusicClient() {
   const [range, setRange] = useState<Preset>("last_7d");
+  const lenis = useLenis();
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey:        ["music-stats", range],
@@ -60,6 +62,11 @@ export function MusicClient() {
     staleTime:        60_000,
     refetchInterval:  60_000,
   });
+
+  // Charts render after data arrives — tell Lenis the page grew
+  useEffect(() => {
+    if (data) lenis?.resize();
+  }, [data, lenis]);
 
   return (
     <div className="flex flex-col gap-4">
