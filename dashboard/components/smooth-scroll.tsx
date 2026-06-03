@@ -14,10 +14,21 @@ const OPTIONS: LenisOptions = {
 function LenisResizer() {
   const lenis = useLenis();
   const pathname = usePathname();
+
   useEffect(() => {
     lenis?.scrollTo(0, { immediate: true });
     lenis?.resize();
   }, [lenis, pathname]);
+
+  // Recalculate scroll height when lazy-loaded content (charts, data) changes
+  // body height. html { height: 100% } is fixed at viewport — observe body instead.
+  useEffect(() => {
+    if (!lenis) return;
+    const ro = new ResizeObserver(() => lenis.resize());
+    ro.observe(document.body);
+    return () => ro.disconnect();
+  }, [lenis]);
+
   return null;
 }
 
