@@ -70,8 +70,18 @@ export function TimerField() {
     const c = canvas; // stable reference for closures
 
     function resize() {
+      const prevW = c.width;
+      const prevH = c.height;
       c.width  = window.innerWidth;
       c.height = window.innerHeight;
+      if (prevW > 0 && prevH > 0) {
+        const sx = c.width  / prevW;
+        const sy = c.height / prevH;
+        for (const t of timersRef.current) {
+          t.x *= sx;
+          t.y *= sy;
+        }
+      }
     }
     resize();
     window.addEventListener("resize", resize);
